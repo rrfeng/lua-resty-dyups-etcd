@@ -1,1 +1,89 @@
 # lua-resty-dyups-etcd
+```
+!!!This module is under heavy development, do not use in  production environment.!!!
+
+A lua module for OpenResty, can dynamically update the upstreams from etcd.
+```
+
+## DEPENDENCE
+- openresty-1.9.7.3 + (balancer_by_lua*)
+- lua-resty-http
+- cjson
+
+## USAGE
+
+### Prepare data in etcd:
+```
+etcdctl set /v1/testing/services/my_test_service/10.1.1.1:8080 1
+etcdctl set /v1/testing/services/my_test_service/10.1.1.2:8080 1
+etcdctl set /v1/testing/services/my_test_service/10.1.1.3:8080 1
+
+Value is ignored, we only need the key: IP:PORT, and IP cannot be dns name.
+```
+
+### Init the module:
+```
+lua_shared_dict dyups 10k; # for global lock and version
+
+init_worker_by_lua_block {
+    local u = require "dyups"
+    u.init({
+        etcd_host = "127.0.0.1",
+        etcd_port = 2379,
+        etcd_path = "/v1/testing/services/",
+        dump_file = "/tmp/nginx-upstreams",
+        dict = ngx.shared.dyups
+    })
+}
+```
+### Get a server in upstream:
+```
+upstream test {
+    server 127.0.0.1:2222; # fake server
+
+    balancer_by_lua_block {
+        local balancer = require "ngx.balancer"
+        local u = require "dyups"
+        local s, err = u.round_robin_server("my_test_service")
+        if not s then
+            ngx.log(ngx.ERR, err)
+            return ngx.exit(500)
+        end
+        local ok, err = balancer.set_current_peer(s.host, s.port)
+        if not ok then
+            ngx.log(ngx.ERR, "failed to set current peer: " .. err)
+            return ngx.exit(500)
+        end
+    }
+}
+```
+
+## Functions
+### round_robin_server
+```
+Get a backend server from the server list in a upstream, and using round-robin algorithm.
+
+dyups.round_robin_server(servicename)
+
+return a table: {host = "127.0.0.1", port = 1234}
+```
+### all_servers
+```
+Get all backend servers in a upstream.
+
+dyups.all_servers(servicename)
+
+return a table:
+{
+  {host= "127.0.0.1", port = 1234},
+  {host= "127.0.0.2", port = 1234},
+  {host= "127.0.0.3", port = 1234}
+}
+
+So you can realize your own balance algorithms.
+```
+
+## License
+```
+I have not think about it yet.
+```
