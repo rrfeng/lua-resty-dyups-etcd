@@ -59,20 +59,18 @@ upstream test {
 ```
 
 ## Functions
-### round_robin_server
+### dyups.round_robin_server(service_name)
 ```
 Get a backend server from the server list in a upstream, and using round-robin algorithm.
-
-dyups.round_robin_server(servicename)
-
-return a table: {host = "127.0.0.1", port = 1234}
+return a table: 
+{
+  host = "127.0.0.1",
+   port = 1234
+}
 ```
-### all_servers
+### dyups.all_servers(service_name)
 ```
 Get all backend servers in a upstream.
-
-dyups.all_servers(servicename)
-
 return a table:
 {
   {host= "127.0.0.1", port = 1234},
