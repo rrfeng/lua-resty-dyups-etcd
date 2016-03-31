@@ -215,18 +215,21 @@ end
 -- Round robin 
 function _M.round_robin_server(name)
 
-  if not _M.ready then 
+  if not _M.ready or not _M.data[name] then 
     return nil, "upstream not ready."
   end
 
   _M.data[name].count = _M.data[name].count + 1
   local pick = _M.data[name].count % #_M.data[name].servers
-  log(pick)
   return _M.data[name].servers[pick + 1]
 end
 
 function _M.all_servers(name)
-  return _M.data[name].servers
+  if _M.data[name] then
+    return _M.data[name].servers
+  else
+    return nil
+  end
 end
 
 return _M
