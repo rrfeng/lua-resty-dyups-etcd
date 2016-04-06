@@ -1,4 +1,4 @@
-# lua-resty-dyups-etcd
+# lua-resty-upstream-etcd
 ```
 !!!This module is under heavy development, do not use in  production environment.!!!
 
