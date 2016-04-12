@@ -83,5 +83,5 @@ So you can realize your own balance algorithms.
 
 ## License
 ```
-I have not think about it yet.
+I have not thought about it yet.
 ```
