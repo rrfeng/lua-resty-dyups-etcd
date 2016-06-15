@@ -9,21 +9,21 @@ local function log(c)
   ngx.log(ngx.ERR, c)
 end
 
-local function copyTab(st)  
-  local tab = {}  
-  for k, v in pairs(st or {}) do  
-    if type(v) ~= "table" then  
-      tab[k] = v  
-    else  
-      tab[k] = copyTab(v)  
-    end  
-  end  
-  return tab  
+local function copyTab(st)
+  local tab = {}
+  for k, v in pairs(st or {}) do
+    if type(v) ~= "table" then
+      tab[k] = v
+    else
+      tab[k] = copyTab(v)
+    end
+  end
+  return tab
 end
 
 local function indexof(t, e)
   for k, v in pairs(t) do
-    if v == e then
+    if v.host == e.host and v.port == e.port then
       return k
     end
   end
@@ -62,15 +62,17 @@ local function release_lock()
   return true
 end
 
-local function dump_tofile()
+local function dump_tofile(force)
   local cur_v = _M.data.version
   local saved = false
   local dict = _M.conf.dict
   while not saved do
     local pre_v = dict:get("version")
-    if pre_v then
-      if tonumber(pre_v) >= tonumber(cur_v) then
-        return true
+    if not force then
+      if pre_v then
+        if tonumber(pre_v) >= tonumber(cur_v) then
+          return true
+        end
       end
     end
 
@@ -134,7 +136,7 @@ local function watch(premature, conf, index)
       end
       _M.ready = true
       nextIndex = _M.data.version + 1
-      dump_tofile()
+      dump_tofile(true)
     end
 
   -- Watch the change and update the data.
@@ -164,13 +166,15 @@ local function watch(premature, conf, index)
           local h, p = split_addr(bkd)
           local bs = {host=h, port=p}
           local svc = basename(ret)
-    
+
           if action == "delete" or action == "expire" then
             table.remove(_M.data[svc].servers, indexof(_M.data[svc].servers, bs))
+            log("DELETE: "..bs.host..":"..bs.port)
           elseif action == "set" or action == "update" then
             if not _M.data[svc] then
               _M.data[svc] = {count=0, servers={bs}}
             elseif not indexof(_M.data[svc].servers, bs) then
+              log("ADD".. bs.host .. bs.port)
               table.insert(_M.data[svc].servers, bs)
             end
           end
@@ -181,12 +185,13 @@ local function watch(premature, conf, index)
         nextIndex = nil
       end
     elseif err == "timeout" then
-      nextIndex = res.headers["x-etcd-index"]
+      nextIndex = res.headers["x-etcd-index"] + 1
     end
-    dump_tofile()
+    dump_tofile(false)
   end
 
   -- Start the update cycle.
+  log("watch start: "..nextIndex)
   local ok, err = ngx.timer.at(1, watch, conf, nextIndex)
   return
 end
@@ -198,6 +203,8 @@ function _M.init(conf)
     local file, err = io.open(conf.dump_file, "r")
     if file == nil then
       log(err)
+      local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
+      return
     else
       local data = json.decode(file:read("*a"))
       _M.data = copyTab(data)
@@ -208,14 +215,15 @@ function _M.init(conf)
   end
 
   -- Start the etcd watcher
+  log("watch start: "..nextIndex)
   local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
 
 end
 
--- Round robin 
+-- Round robin
 function _M.round_robin_server(name)
 
-  if not _M.ready or not _M.data[name] then 
+  if not _M.ready or not _M.data[name] then
     return nil, "upstream not ready."
   end
 
