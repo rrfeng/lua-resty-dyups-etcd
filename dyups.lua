@@ -37,7 +37,29 @@ end
 
 local function split_addr(s)
   host, port = s:match("(.*):([0-9]+)")
-  return host, port
+
+  -- verify the port
+  local p = tonumber(port)
+  if p == nil then
+    return "127.0.0.1", 0, "port invalid"
+  elseif p < 1 or p > 65535 then
+    return "127.0.0.1", 0, "port invalid"
+  end
+
+  -- verify the ip addr
+  local chunks = {host:match("(%d+)%.(%d+)%.(%d+)%.(%d+)")}
+  if (#chunks == 4) then
+      for _,v in pairs(chunks) do
+          if (tonumber(v) < 0 or tonumber(v) > 255) then
+              return "127.0.0.1", 0, "host invalid"
+          end
+      end
+  else
+    return "127.0.0.1", 0, "host invalid"
+  end
+
+  -- verify pass
+  return host, port, nil
 end
 
 local function get_lock()
@@ -101,7 +123,7 @@ end
 
 local function watch(premature, conf, index)
   local c = http:new()
-  c:set_timeout(60000)
+  c:set_timeout(120000)
   c:connect(conf.etcd_host, conf.etcd_port)
 
   local nextIndex
@@ -114,7 +136,7 @@ local function watch(premature, conf, index)
     local body, err = res:read_body()
     if not err then
       local all = json.decode(body)
-      if not all.errorCode then
+      if not all.errorCode and all.node.nodes then
         for n, s in pairs(all.node.nodes) do
           local name = basename(s.key)
           _M.data[name] = { count=0, servers={}}
@@ -126,8 +148,10 @@ local function watch(premature, conf, index)
             if not svc.errorCode and svc.node.nodes then
               for i, j in pairs(svc.node.nodes) do
                 local b = basename(j.key)
-                local h, p = split_addr(b)
-                _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p}
+                local h, p, err = split_addr(b)
+                if not err then
+                  _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p}
+                end
               end
             end
           end
@@ -135,7 +159,9 @@ local function watch(premature, conf, index)
         end
       end
       _M.ready = true
-      nextIndex = _M.data.version + 1
+      if _M.data.version then
+        nextIndex = _M.data.version + 1
+      end
       dump_tofile(true)
     end
 
@@ -146,7 +172,7 @@ local function watch(premature, conf, index)
     local body, err = res:read_body()
 
     if not err then
-      log("watch.2: end, changed"..body)
+      log("watch recieve change: "..body)
       local change = json.decode(body)
 
       if not change.errorCode then
@@ -163,20 +189,24 @@ local function watch(premature, conf, index)
           end
         else
           local bkd, ret = basename(change.node.key)
-          local h, p = split_addr(bkd)
-          local bs = {host=h, port=p}
-          local svc = basename(ret)
+          local h, p, err = split_addr(bkd)
+          if not err then
+            local bs = {host=h, port=p}
+            local svc = basename(ret)
 
-          if action == "delete" or action == "expire" then
-            table.remove(_M.data[svc].servers, indexof(_M.data[svc].servers, bs))
-            log("DELETE: "..bs.host..":"..bs.port)
-          elseif action == "set" or action == "update" then
-            if not _M.data[svc] then
-              _M.data[svc] = {count=0, servers={bs}}
-            elseif not indexof(_M.data[svc].servers, bs) then
-              log("ADD".. bs.host .. bs.port)
-              table.insert(_M.data[svc].servers, bs)
+            if action == "delete" or action == "expire" then
+              table.remove(_M.data[svc].servers, indexof(_M.data[svc].servers, bs))
+              log("DELETE: "..bs.host..":"..bs.port)
+            elseif action == "set" or action == "update" then
+              if not _M.data[svc] then
+                _M.data[svc] = {count=0, servers={bs}}
+              elseif not indexof(_M.data[svc].servers, bs) then
+                log("ADD: ".. bs.host ..":".. bs.port)
+                table.insert(_M.data[svc].servers, bs)
+              end
             end
+          else
+            log(err)
           end
         end
         _M.data.version = change.node.modifiedIndex
@@ -191,8 +221,7 @@ local function watch(premature, conf, index)
   end
 
   -- Start the update cycle.
-  log("watch start: "..nextIndex)
-  local ok, err = ngx.timer.at(1, watch, conf, nextIndex)
+  local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
   return
 end
 
@@ -206,16 +235,24 @@ function _M.init(conf)
       local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
       return
     else
-      local data = json.decode(file:read("*a"))
-      _M.data = copyTab(data)
-      file:close()
-      _M.ready = true
+      local d = file:read("*a")
+      local data = json.decode(d)
+      if err then
+        log(err)
+        local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
+        return
+      else
+        _M.data = copyTab(data)
+        file:close()
+        _M.ready = true
+        if _M.data.version then
+          nextIndex = _M.data.version + 1
+        end
+      end
     end
-    nextIndex = _M.data.version + 1
   end
 
   -- Start the etcd watcher
-  log("watch start: "..nextIndex)
   local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
 
 end
@@ -227,8 +264,18 @@ function _M.round_robin_server(name)
     return nil, "upstream not ready."
   end
 
-  _M.data[name].count = _M.data[name].count + 1
-  local pick = _M.data[name].count % #_M.data[name].servers
+  local c = _M.conf.dict
+  local c_key = name .. "_count"
+  local count, err = c:incr(c_key, 1)
+  if err == "not found" then
+    count = 1
+    ok = c:set(c_key, 1)
+    if not ok then
+      _M.data[name].count = _M.data[name].count + 1
+      count = _M.data[name].count
+    end
+  end
+  local pick = count % #_M.data[name].servers
   return _M.data[name].servers[pick + 1]
 end
 
