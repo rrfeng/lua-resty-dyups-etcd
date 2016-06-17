@@ -122,6 +122,10 @@ local function dump_tofile(force)
 end
 
 local function watch(premature, conf, index)
+    if premature then
+        return
+    end
+
     local c = http:new()
     c:set_timeout(120000)
     c:connect(conf.etcd_host, conf.etcd_port)
@@ -219,9 +223,10 @@ local function watch(premature, conf, index)
         end
         dump_tofile(false)
     end
+    c:close()
 
-    -- Start the update cycle.
-    local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
+    -- Start the update cycle. The delay cannot be 0, or the worker process will never exit.
+    local ok, err = ngx.timer.at(0.01, watch, conf, nextIndex)
     return
 end
 
