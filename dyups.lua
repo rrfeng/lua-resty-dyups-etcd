@@ -6,6 +6,7 @@ local ngx_timer_at = ngx.timer.at
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
 local ngx_sleep = ngx.sleep
+local ngx_worker_exiting = ngx.worker.exiting
 
 _M.ready = false
 _M.data = {}
@@ -131,6 +132,10 @@ local function watch(premature, conf, index)
         return
     end
 
+    if ngx_worker_exiting() then
+        return
+    end
+
     local c = http:new()
     c:set_timeout(120000)
     c:connect(conf.etcd_host, conf.etcd_port)
@@ -230,8 +235,8 @@ local function watch(premature, conf, index)
     end
     c:close()
 
-    -- Start the update cycle. The delay cannot be 0, or the worker process will never exit.
-    local ok, err = ngx_timer_at(0.01, watch, conf, nextIndex)
+    -- Start the update cycle.
+    local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
     return
 end
 
