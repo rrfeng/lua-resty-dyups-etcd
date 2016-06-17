@@ -2,11 +2,16 @@ local _M = {}
 local http = require "resty.http"
 local json = require "cjson"
 
+local ngx_timer_at = ngx.timer.at
+local ngx_log = ngx.log
+local ngx_ERR = ngx.ERR
+local ngx_sleep = ngx.sleep
+
 _M.ready = false
 _M.data = {}
 
 local function log(c)
-    ngx.log(ngx.ERR, c)
+    ngx_log(ngx_ERR, c)
 end
 
 local function copyTab(st)
@@ -116,7 +121,7 @@ local function dump_tofile(force)
             saved = true
             release_lock()
         else
-            ngx.sleep(0.2)
+            ngx_sleep(0.2)
         end
     end
 end
@@ -226,7 +231,7 @@ local function watch(premature, conf, index)
     c:close()
 
     -- Start the update cycle. The delay cannot be 0, or the worker process will never exit.
-    local ok, err = ngx.timer.at(0.01, watch, conf, nextIndex)
+    local ok, err = ngx_timer_at(0.01, watch, conf, nextIndex)
     return
 end
 
@@ -237,14 +242,14 @@ function _M.init(conf)
         local file, err = io.open(conf.dump_file, "r")
         if file == nil then
             log(err)
-            local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
+            local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
             return
         else
             local d = file:read("*a")
             local data = json.decode(d)
             if err then
                 log(err)
-                local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
+                local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
                 return
             else
                 _M.data = copyTab(data)
@@ -258,7 +263,7 @@ function _M.init(conf)
     end
 
     -- Start the etcd watcher
-    local ok, err = ngx.timer.at(0, watch, conf, nextIndex)
+    local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
 
 end
 
