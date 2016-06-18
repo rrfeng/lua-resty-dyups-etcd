@@ -23,8 +23,8 @@ Value is ignored, we only need the key: IP:PORT, and IP cannot be dns name.
 
 ### Init the module:
 ```
+lua_socket_log_errors off; # recommend
 lua_shared_dict dyups 10k; # for global lock and version
-
 init_worker_by_lua_block {
     local u = require "dyups"
     u.init({
@@ -82,6 +82,7 @@ So you can realize your own balance algorithms.
 ```
 
 ## Todo
+--- Etcd cluster support.
 --- Add more load-balance-alg.
 --- Upstream peers weight support.
 --- Upstream health check support.
