@@ -186,7 +186,7 @@ local function watch(premature, conf, index)
         local body, err = res:read_body()
 
         if not err then
-            log("watch recieve change: "..body)
+            -- log("DEBUG: recieve change: "..body)
             local change = json.decode(body)
 
             if not change.errorCode then
@@ -210,12 +210,12 @@ local function watch(premature, conf, index)
 
                         if action == "delete" or action == "expire" then
                             table.remove(_M.data[svc].servers, indexof(_M.data[svc].servers, bs))
-                            log("DELETE: "..bs.host..":"..bs.port)
+                            log("DELETE [".. svc .. "]: " .. bs.host .. ":" .. bs.port)
                         elseif action == "set" or action == "update" then
                             if not _M.data[svc] then
                                 _M.data[svc] = {count=0, servers={bs}}
                             elseif not indexof(_M.data[svc].servers, bs) then
-                                log("ADD: ".. bs.host ..":".. bs.port)
+                                log("ADD [" .. svc .. "]: " .. bs.host ..":".. bs.port)
                                 table.insert(_M.data[svc].servers, bs)
                             end
                         end
