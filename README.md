@@ -81,6 +81,11 @@ return a table:
 So you can realize your own balance algorithms.
 ```
 
+## Todo
+--- Add more load-balance-alg.
+--- Upstream peers weight support.
+--- Upstream health check support.
+
 ## License
 ```
 I have not thought about it yet.
