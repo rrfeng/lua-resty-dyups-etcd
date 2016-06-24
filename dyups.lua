@@ -106,9 +106,10 @@ local function dump_tofile(force)
 
         local l = get_lock()
         if l then
-            local file, err = io.open(_M.conf.dump_file, 'w')
+            local f_path = _M.conf.dump_file .. _M.conf.etcd_path:gsub("/", "_")
+            local file, err = io.open(f_path, 'w')
             if file == nil then
-                log("Can't open file: " .. _M.conf.dump_file .. err)
+                log("Can't open file: " .. f_path .. err)
                 release_lock()
                 return false
             end
@@ -244,6 +245,7 @@ function _M.init(conf)
     -- Load the upstreams from file
     if not _M.ready then
         _M.conf = conf
+        local f_path = _M.conf.dump_file .. _M.conf.etcd_path:gsub("/", "_")
         local file, err = io.open(conf.dump_file, "r")
         if file == nil then
             log(err)
