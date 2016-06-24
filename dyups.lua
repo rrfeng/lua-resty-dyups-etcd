@@ -246,7 +246,7 @@ function _M.init(conf)
     if not _M.ready then
         _M.conf = conf
         local f_path = _M.conf.dump_file .. _M.conf.etcd_path:gsub("/", "_")
-        local file, err = io.open(conf.dump_file, "r")
+        local file, err = io.open(f_path, "r")
         if file == nil then
             log(err)
             local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
