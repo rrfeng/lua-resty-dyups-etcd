@@ -1,4 +1,4 @@
-# lua-resty-dyups-etcd
+# lua-resty-upstream-etcd
 ```
 !!!This module is under heavy development, do not use in  production environment.!!!
 
@@ -23,14 +23,15 @@ Value is ignored, we only need the key: IP:PORT, and IP cannot be dns name.
 
 ### Init the module:
 ```
+lua_socket_log_errors off; # recommend
 lua_shared_dict dyups 10k; # for global lock and version
-
 init_worker_by_lua_block {
     local u = require "dyups"
     u.init({
         etcd_host = "127.0.0.1",
         etcd_port = 2379,
         etcd_path = "/v1/testing/services/",
+-- The real path of the dump file will be: /tmp/nginx-upstreams_v1_testing_services_
         dump_file = "/tmp/nginx-upstreams",
         dict = ngx.shared.dyups
     })
@@ -81,7 +82,13 @@ return a table:
 So you can realize your own balance algorithms.
 ```
 
+## Todo
+--- Etcd cluster support.
+--- Add more load-balance-alg.
+--- Upstream peers weight support.
+--- Upstream health check support.
+
 ## License
 ```
-I have not think about it yet.
+I have not thought about it yet.
 ```
