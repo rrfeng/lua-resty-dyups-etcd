@@ -1,5 +1,5 @@
 local _M = {}
-local http = require "resty.http"
+local http = require "http"
 local json = require "cjson"
 
 local ngx_timer_at = ngx.timer.at
@@ -148,91 +148,96 @@ local function watch(premature, conf, index)
     if index == nil then
         local s_url = url .. "?recursive=true"
         local res, err = c:request({ path = s_url, method = "GET" })
-        local body, err = res:read_body()
         if not err then
-            local all = json.decode(body)
-            if not all.errorCode and all.node.nodes then
-                for n, s in pairs(all.node.nodes) do
-                    local name = basename(s.key)
-                    _M.data[name] = { count=0, servers={}}
-                    local s_url = url .. name .. "?recursive=true"
-                    local res, err = c:request({path = s_url, method = "GET"})
-                    local body, err = res:read_body()
-                    if not err then
-                        local svc = json.decode(body)
-                        if not svc.errorCode and svc.node.nodes then
-                            for i, j in pairs(svc.node.nodes) do
-                                local b = basename(j.key)
-                                local h, p, err = split_addr(b)
-                                if not err then
-                                    _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p}
+            local body, err = res:read_body()
+            if not err then
+                local all = json.decode(body)
+                if not all.errorCode and all.node.nodes then
+                    for n, s in pairs(all.node.nodes) do
+                        local name = basename(s.key)
+                        _M.data[name] = { count=0, servers={}}
+                        local s_url = url .. name .. "?recursive=true"
+                        local res, err = c:request({path = s_url, method = "GET"})
+                        if not err then
+                            local body, err = res:read_body()
+                            if not err then
+                                local svc = json.decode(body)
+                                if not svc.errorCode and svc.node.nodes then
+                                    for i, j in pairs(svc.node.nodes) do
+                                        local b = basename(j.key)
+                                        local h, p, err = split_addr(b)
+                                        if not err then
+                                            _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p}
+                                        end
+                                    end
                                 end
                             end
+                            _M.data.version = res.headers["x-etcd-index"]
                         end
                     end
-                    _M.data.version = res.headers["x-etcd-index"]
                 end
+                _M.ready = true
+                if _M.data.version then
+                    nextIndex = _M.data.version + 1
+                end
+                dump_tofile(true)
             end
-            _M.ready = true
-            if _M.data.version then
-                nextIndex = _M.data.version + 1
-            end
-            dump_tofile(true)
         end
 
-        -- Watch the change and update the data.
+    -- Watch the change and update the data.
     else
         local s_url = url .. "?wait=true&recursive=true&waitIndex=" .. index
         local res, err = c:request({ path = s_url, method = "GET" })
-        local body, err = res:read_body()
-
         if not err then
-            -- log("DEBUG: recieve change: "..body)
-            local change = json.decode(body)
+            local body, err = res:read_body()
+            if not err then
+                -- log("DEBUG: recieve change: "..body)
+                local change = json.decode(body)
 
-            if not change.errorCode then
-                local action = change.action
-                if change.node.dir then
-                    local target = change.node.key:match(_M.conf.etcd_path .. '(.*)/?')
-                    if action == "delete" then
-                        _M.data[target] = nil
-                    elseif action == "set" or action == "update" then
-                        local new_svc = target:match('([^/]*).*')
-                        if not _M.data[new_svc] then
-                            _M.data[new_svc] = {count=0, servers={}}
-                        end
-                    end
-                else
-                    local bkd, ret = basename(change.node.key)
-                    local h, p, err = split_addr(bkd)
-                    if not err then
-                        local bs = {host=h, port=p}
-                        local svc = basename(ret)
-
-                        if action == "delete" or action == "expire" then
-                            table.remove(_M.data[svc].servers, indexof(_M.data[svc].servers, bs))
-                            log("DELETE [".. svc .. "]: " .. bs.host .. ":" .. bs.port)
+                if not change.errorCode then
+                    local action = change.action
+                    if change.node.dir then
+                        local target = change.node.key:match(_M.conf.etcd_path .. '(.*)/?')
+                        if action == "delete" then
+                            _M.data[target] = nil
                         elseif action == "set" or action == "update" then
-                            if not _M.data[svc] then
-                                _M.data[svc] = {count=0, servers={bs}}
-                            elseif not indexof(_M.data[svc].servers, bs) then
-                                log("ADD [" .. svc .. "]: " .. bs.host ..":".. bs.port)
-                                table.insert(_M.data[svc].servers, bs)
+                            local new_svc = target:match('([^/]*).*')
+                            if not _M.data[new_svc] then
+                                _M.data[new_svc] = {count=0, servers={}}
                             end
                         end
                     else
-                        log(err)
+                        local bkd, ret = basename(change.node.key)
+                        local h, p, err = split_addr(bkd)
+                        if not err then
+                            local bs = {host=h, port=p}
+                            local svc = basename(ret)
+
+                            if action == "delete" or action == "expire" then
+                                table.remove(_M.data[svc].servers, indexof(_M.data[svc].servers, bs))
+                                log("DELETE [".. svc .. "]: " .. bs.host .. ":" .. bs.port)
+                            elseif action == "set" or action == "update" then
+                                if not _M.data[svc] then
+                                    _M.data[svc] = {count=0, servers={bs}}
+                                elseif not indexof(_M.data[svc].servers, bs) then
+                                    log("ADD [" .. svc .. "]: " .. bs.host ..":".. bs.port)
+                                    table.insert(_M.data[svc].servers, bs)
+                                end
+                            end
+                        else
+                            log(err)
+                        end
                     end
+                    _M.data.version = change.node.modifiedIndex
+                    nextIndex = _M.data.version + 1
+                elseif change.errorCode == 401 then
+                    nextIndex = nil
                 end
-                _M.data.version = change.node.modifiedIndex
-                nextIndex = _M.data.version + 1
-            elseif change.errorCode == 401 then
-                nextIndex = nil
+            elseif err == "timeout" then
+                nextIndex = res.headers["x-etcd-index"] + 1
             end
-        elseif err == "timeout" then
-            nextIndex = res.headers["x-etcd-index"] + 1
+            dump_tofile(false)
         end
-        dump_tofile(false)
     end
     c:close()
 
