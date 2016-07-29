@@ -18,7 +18,8 @@ etcdctl set /v1/testing/services/my_test_service/10.1.1.1:8080 '{"weight": 3}'
 etcdctl set /v1/testing/services/my_test_service/10.1.1.2:8080 '{"weight": 4}'
 etcdctl set /v1/testing/services/my_test_service/10.1.1.3:8080 '{"weight": 5}'
 
-Value should be a json, now round_robin_with_weight() support the **weight** for load balancing, works like nginx round-robin.
+Value should be a json, now round_robin_with_weight() support the weight for load balancing, works like nginx round-robin.
+The default weight is 1, if not set in ETCD, or json parse error and so on.
 ```
 
 ### Init the module:
@@ -66,7 +67,7 @@ Get a backend server from the server list in a upstream, and using round-robin a
 return a table: 
 {
   host = "127.0.0.1",
-   port = 1234
+  port = 1234
 }
 ```
 ### dyups.all_servers(service_name)
@@ -80,6 +81,12 @@ return a table:
 }
 
 So you can realize your own balance algorithms.
+```
+
+## dyups.round_robin_with_weight(service_name)
+```
+Like round_robin_server, you should use this function instead of round_robin_serverZ().
+This support peers weight.
 ```
 
 ## Todo
