@@ -14,11 +14,11 @@ A lua module for OpenResty, can dynamically update the upstreams from etcd.
 
 ### Prepare data in etcd:
 ```
-etcdctl set /v1/testing/services/my_test_service/10.1.1.1:8080 1
-etcdctl set /v1/testing/services/my_test_service/10.1.1.2:8080 1
-etcdctl set /v1/testing/services/my_test_service/10.1.1.3:8080 1
+etcdctl set /v1/testing/services/my_test_service/10.1.1.1:8080 '{"weight": 3}'
+etcdctl set /v1/testing/services/my_test_service/10.1.1.2:8080 '{"weight": 4}'
+etcdctl set /v1/testing/services/my_test_service/10.1.1.3:8080 '{"weight": 5}'
 
-Value is ignored, we only need the key: IP:PORT, and IP cannot be dns name.
+Value should be a json, now round_robin_with_weight() support the **weight** for load balancing, works like nginx round-robin.
 ```
 
 ### Init the module:
@@ -85,7 +85,7 @@ So you can realize your own balance algorithms.
 ## Todo
 --- Etcd cluster support.
 --- Add more load-balance-alg.
---- Upstream peers weight support.
+--- ~~Upstream peers weight support.~~
 --- Upstream health check support.
 
 ## License
