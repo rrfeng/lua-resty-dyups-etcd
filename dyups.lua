@@ -167,14 +167,14 @@ local function watch(premature, conf, index)
                                         local w = 0
                                         local b = basename(j.key)
                                         local ok, value = pcall(json.decode, j.value)
-                                        if not ok or not value.weight then
-                                            w = 1
-                                        else
+                                        if type(value) == "table" and value.weight then
                                             w = value.weight
+                                        else
+                                            w = 1
                                         end
                                         local h, p, err = split_addr(b)
                                         if not err then
-                                            _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p, weight=w}
+                                            _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p, weight=w, current_weight=0}
                                         end
                                     end
                                 end
@@ -215,9 +215,17 @@ local function watch(premature, conf, index)
                         end
                     else
                         local bkd, ret = basename(change.node.key)
+                        local ok, value = pcall(json.decode, change.node.value)
+
+                        if type(value) == "table" and value.weight then
+                            w = value.weight
+                        else
+                            w = 1
+                        end
+
                         local h, p, err = split_addr(bkd)
                         if not err then
-                            local bs = {host=h, port=p}
+                            local bs = {host=h, port=p, weight=w, current_weight = 0}
                             local svc = basename(ret)
 
                             if action == "delete" or action == "expire" then
@@ -226,9 +234,15 @@ local function watch(premature, conf, index)
                             elseif action == "set" or action == "update" then
                                 if not _M.data[svc] then
                                     _M.data[svc] = {count=0, servers={bs}}
-                                elseif not indexof(_M.data[svc].servers, bs) then
-                                    log("ADD [" .. svc .. "]: " .. bs.host ..":".. bs.port)
-                                    table.insert(_M.data[svc].servers, bs)
+                                else
+                                    local index = indexof(_M.data[svc].servers, bs)
+                                    if index == nil then
+                                        log("ADD [" .. svc .. "]: " .. bs.host ..":".. bs.port)
+                                        table.insert(_M.data[svc].servers, bs)
+                                    else
+                                        log("MODIFY [" .. svc .. "]: " .. bs.host ..":".. bs.port .. " " .. change.node.value)
+                                        _M.data[svc].servers[index] = bs
+                                    end
                                 end
                             end
                         else
@@ -332,8 +346,8 @@ function _M.round_robin_with_weight(name)
             goto continue
         end
 
-        peer.current_weight += peer.weight
-        total += peer.weight
+        peer.current_weight = peer.current_weight + peer.weight
+        total = total + peer.weight
 
         if pick == nil or pick.current_weight < peer.current_weight then
             pick = peer
@@ -341,6 +355,8 @@ function _M.round_robin_with_weight(name)
 
         ::continue::
     end
+
+    pick.current_weight = pick.current_weight - total
 
     return pick
 end
