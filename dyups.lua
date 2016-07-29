@@ -164,10 +164,17 @@ local function watch(premature, conf, index)
                                 local svc = json.decode(body)
                                 if not svc.errorCode and svc.node.nodes then
                                     for i, j in pairs(svc.node.nodes) do
+                                        local w = 0
                                         local b = basename(j.key)
+                                        local ok, value = pcall(json.decode, j.value)
+                                        if not ok or not value.weight then
+                                            w = 1
+                                        else
+                                            w = value.weight
+                                        end
                                         local h, p, err = split_addr(b)
                                         if not err then
-                                            _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p}
+                                            _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p, weight=w}
                                         end
                                     end
                                 end
@@ -299,6 +306,43 @@ function _M.round_robin_server(name)
     end
     local pick = count % #_M.data[name].servers
     return _M.data[name].servers[pick + 1]
+end
+
+function _M.round_robin_with_weight(name)
+    if not _M.ready or not _M.data[name] then
+        return nil, "upstream not ready."
+    end
+
+    local peers = _M.data[name].servers
+    local total = 0
+    local pick = nil
+
+    for _, peer in pairs(peers) do
+
+        -- If no weight set, the default is 1.
+        if peer.weight == nil then
+            peer.weight = 1
+        end
+
+        if peer.current_weight == nil then
+            peer.current_weight = 0
+        end
+
+        if peer.weight == 0 then
+            goto continue
+        end
+
+        peer.current_weight += peer.weight
+        total += peer.weight
+
+        if pick == nil or pick.current_weight < peer.current_weight then
+            pick = peer
+        end
+
+        ::continue::
+    end
+
+    return pick
 end
 
 function _M.all_servers(name)
