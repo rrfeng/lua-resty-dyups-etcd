@@ -331,26 +331,26 @@ function _M.round_robin_with_weight(name)
     local total = 0
     local pick = nil
 
-    for _, peer in pairs(peers) do
+    for i=1,#peers,1 do
 
         -- If no weight set, the default is 1.
-        if peer.weight == nil then
-            peer.weight = 1
+        if peers[i].weight == nil then
+            peers[i].weight = 1
         end
 
-        if peer.current_weight == nil then
-            peer.current_weight = 0
+        if peers[i].current_weight == nil then
+            peers[i].current_weight = 0
         end
 
-        if peer.weight == 0 then
+        if peers[i].weight == 0 then
             goto continue
         end
 
-        peer.current_weight = peer.current_weight + peer.weight
-        total = total + peer.weight
+        peers[i].current_weight = peers[i].current_weight + peers[i].weight
+        total = total + peers[i].weight
 
-        if pick == nil or pick.current_weight < peer.current_weight then
-            pick = peer
+        if pick == nil or pick.current_weight < peers[i].current_weight then
+            pick = peers[i]
         end
 
         ::continue::
