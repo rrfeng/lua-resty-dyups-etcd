@@ -357,7 +357,7 @@ function _M.round_robin_with_weight(name)
     end
 
     if pick then
-       pick.current_weight = pick.current_weight - total
+        pick.current_weight = pick.current_weight - total
     end
 
     return pick
