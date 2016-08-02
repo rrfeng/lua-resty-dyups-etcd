@@ -356,7 +356,9 @@ function _M.round_robin_with_weight(name)
         ::continue::
     end
 
-    pick.current_weight = pick.current_weight - total
+    if pick != nil then
+       pick.current_weight = pick.current_weight - total
+    end
 
     return pick
 end
