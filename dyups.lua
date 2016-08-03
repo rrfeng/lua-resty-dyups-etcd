@@ -331,7 +331,7 @@ function _M.round_robin_with_weight(name)
     local total = 0
     local pick = nil
 
-    for i=1,#peers,1 do
+    for i=1,#peers do
 
         -- If no weight set, the default is 1.
         if peers[i].weight == nil then
