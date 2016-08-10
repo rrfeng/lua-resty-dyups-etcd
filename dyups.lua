@@ -165,16 +165,22 @@ local function watch(premature, conf, index)
                                 if not svc.errorCode and svc.node.nodes then
                                     for i, j in pairs(svc.node.nodes) do
                                         local w = 0
+                                        local s = "up"
                                         local b = basename(j.key)
                                         local ok, value = pcall(json.decode, j.value)
-                                        if type(value) == "table" and value.weight then
-                                            w = value.weight
-                                        else
-                                            w = 1
+
+                                        if type(value) == "table" then
+                                            if value.weight then
+                                                w = value.weight
+                                            end
+                                            if value.status then
+                                                s = value.status
+                                            end
                                         end
+
                                         local h, p, err = split_addr(b)
                                         if not err then
-                                            _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p, weight=w, current_weight=0}
+                                            _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p, weight=w, current_weight=0, status=s}
                                         end
                                     end
                                 end
@@ -217,15 +223,21 @@ local function watch(premature, conf, index)
                         local bkd, ret = basename(change.node.key)
                         local ok, value = pcall(json.decode, change.node.value)
 
-                        if type(value) == "table" and value.weight then
-                            w = value.weight
-                        else
-                            w = 1
+                        local w = 1
+                        local s = "up"
+
+                        if type(value) == "table" then
+                            if value.weight then
+                                w = value.weight
+                            end
+                            if value.status then
+                                s = value.status
+                            end
                         end
 
                         local h, p, err = split_addr(bkd)
                         if not err then
-                            local bs = {host=h, port=p, weight=w, current_weight = 0}
+                            local bs = {host=h, port=p, weight=w, current_weight = 0, status=s}
                             local svc = basename(ret)
 
                             if action == "delete" or action == "expire" then
@@ -343,6 +355,10 @@ function _M.round_robin_with_weight(name)
         end
 
         if peers[i].weight == 0 then
+            goto continue
+        end
+
+        if peers[i].status == "down" then
             goto continue
         end
 
