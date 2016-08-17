@@ -128,6 +128,8 @@ local function dump_tofile(force)
     end
 end
 
+local slow_start
+
 local function watch(premature, conf, index)
     if premature then
         return
@@ -250,7 +252,14 @@ local function watch(premature, conf, index)
                                     local index = indexof(_M.data[svc].servers, bs)
                                     if index == nil then
                                         log("ADD [" .. svc .. "]: " .. bs.host ..":".. bs.port)
+
+                                        -- using slow_start
+                                        bs.weight = 0
                                         table.insert(_M.data[svc].servers, bs)
+                                        local ok, err = ngx_timer_at(0, slow_start, svc, bs, w, 1)
+                                        if not ok then
+                                            log("Error start ngx.timer when tring slow start.")
+                                        end
                                     else
                                         log("MODIFY [" .. svc .. "]: " .. bs.host ..":".. bs.port .. " " .. change.node.value)
                                         _M.data[svc].servers[index] = bs
@@ -276,18 +285,28 @@ local function watch(premature, conf, index)
 
     -- Start the update cycle.
     local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
+    if not ok then
+        log("Error start watch: ", err)
+    end
     return
 end
 
 function _M.init(conf)
     -- Load the upstreams from file
     if not _M.ready then
+        if not conf.slow_start or conf.slow_start < 0 then
+            conf.slow_start = 0
+        end
+
         _M.conf = conf
         local f_path = _M.conf.dump_file .. _M.conf.etcd_path:gsub("/", "_")
         local file, err = io.open(f_path, "r")
         if file == nil then
             log(err)
             local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
+            if not ok then
+                log("Error start watch: " .. err)
+            end
             return
         else
             local d = file:read("*a")
@@ -295,6 +314,9 @@ function _M.init(conf)
             if err then
                 log(err)
                 local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
+                if not ok then
+                    log("Error start watch: " .. err)
+                end
                 return
             else
                 _M.data = copyTab(data)
@@ -309,6 +331,9 @@ function _M.init(conf)
 
     -- Start the etcd watcher
     local ok, err = ngx_timer_at(0, watch, conf, nextIndex)
+    if not ok then
+        log("Error start watch: " .. err)
+    end
 
 end
 
@@ -384,6 +409,46 @@ function _M.all_servers(name)
         return _M.data[name].servers
     else
         return nil
+    end
+end
+
+slow_start =  function (premature, name, peer, to_weight, t)
+
+    if premature then
+        return
+    end
+
+    if t < 1 then
+        t = 1
+    end
+
+    local times = _M.conf.slow_start
+
+    if t > times then
+        return
+    end
+
+    local ps = _M.data[name].servers
+    local i =  indexof(ps, peer)
+
+    if not i then
+        return
+    end
+
+    if t == times then
+        ps[i].weight = to_weight
+
+        -- do dump when peer recover to normal weight, or the weight will be not correct in dumpfile.
+        dump_tofile(true)
+
+        return
+    end
+
+    ps[i].weight = to_weight * t / times
+
+    local ok, err = ngx_timer_at(1, slow_start, name, peer, to_weight, t+1)
+    if not ok then
+        log("Error start slow_start: " .. err)
     end
 end
 

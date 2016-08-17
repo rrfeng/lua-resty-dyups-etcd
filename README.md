@@ -32,8 +32,10 @@ init_worker_by_lua_block {
         etcd_host = "127.0.0.1",
         etcd_port = 2379,
         etcd_path = "/v1/testing/services/",
--- The real path of the dump file will be: /tmp/nginx-upstreams_v1_testing_services_
+        -- The real path of the dump file will be: /tmp/nginx-upstreams_v1_testing_services_
         dump_file = "/tmp/nginx-upstreams",
+        -- Slow-start in N seconds from 0 to configured weight for the newly added peer
+        slow_start = 10,
         dict = ngx.shared.dyups
     })
 }
