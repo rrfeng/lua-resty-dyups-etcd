@@ -90,6 +90,27 @@ local function release_lock()
     return true
 end
 
+local function newpeer(key, value)
+    local w, s = 1, "up"
+    local ipport, ret = basename(key)
+    local name = basename(ret)
+    local h, p, err = split_addr(ipport)
+    if err then
+        return nil, err
+    end
+
+    local ok, value = pcall(json.decode, j.value)
+    if type(value) == "table" then
+        if value.weight then 
+            w = value.weight
+        end
+        if value.status then
+            s = value.status
+        end
+    end
+    return {host=h, port=p, weight=w, status=s}, name, nil
+end
+
 local function dump_tofile(force)
     local cur_v = _M.data.version
     local saved = false
@@ -166,23 +187,9 @@ local function watch(premature, conf, index)
                                 local svc = json.decode(body)
                                 if not svc.errorCode and svc.node.nodes then
                                     for i, j in pairs(svc.node.nodes) do
-                                        local w = 0
-                                        local s = "up"
-                                        local b = basename(j.key)
-                                        local ok, value = pcall(json.decode, j.value)
-
-                                        if type(value) == "table" then
-                                            if value.weight then
-                                                w = value.weight
-                                            end
-                                            if value.status then
-                                                s = value.status
-                                            end
-                                        end
-
-                                        local h, p, err = split_addr(b)
+                                        local peer, _, err = newpeer(j.key, j.value)
                                         if not err then
-                                            _M.data[name].servers[#_M.data[name].servers+1] = {host=h, port=p, weight=w, current_weight=0, status=s}
+                                            _M.data[name].servers[#_M.data[name].servers+1] = peer
                                         end
                                     end
                                 end
@@ -223,25 +230,8 @@ local function watch(premature, conf, index)
                         end
                     else
                         local bkd, ret = basename(change.node.key)
-                        local ok, value = pcall(json.decode, change.node.value)
-
-                        local w = 1
-                        local s = "up"
-
-                        if type(value) == "table" then
-                            if value.weight then
-                                w = value.weight
-                            end
-                            if value.status then
-                                s = value.status
-                            end
-                        end
-
-                        local h, p, err = split_addr(bkd)
+                        local bs, svc, err = newpeer(change.node.key, change.node.value)
                         if not err then
-                            local bs = {host=h, port=p, weight=w, current_weight = 0, status=s}
-                            local svc = basename(ret)
-
                             if action == "delete" or action == "expire" then
                                 table.remove(_M.data[svc].servers, indexof(_M.data[svc].servers, bs))
                                 log("DELETE [".. svc .. "]: " .. bs.host .. ":" .. bs.port)
@@ -338,27 +328,6 @@ function _M.init(conf)
 end
 
 -- Round robin
-function _M.round_robin_server(name)
-
-    if not _M.ready or not _M.data[name] then
-        return nil, "upstream not ready."
-    end
-
-    local c = _M.conf.dict
-    local c_key = name .. "_count"
-    local count, err = c:incr(c_key, 1)
-    if err == "not found" then
-        count = 1
-        ok = c:set(c_key, 1)
-        if not ok then
-            _M.data[name].count = _M.data[name].count + 1
-            count = _M.data[name].count
-        end
-    end
-    local pick = count % #_M.data[name].servers
-    return _M.data[name].servers[pick + 1]
-end
-
 function _M.round_robin_with_weight(name)
     if not _M.ready or not _M.data[name] then
         return nil, "upstream not ready."
