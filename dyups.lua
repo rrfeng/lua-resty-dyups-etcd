@@ -166,7 +166,7 @@ local function watch(premature, conf, index)
                                 local svc = json.decode(body)
                                 if not svc.errorCode and svc.node.nodes then
                                     for i, j in pairs(svc.node.nodes) do
-                                        local w = 0
+                                        local w = 1
                                         local s = "up"
                                         local b = basename(j.key)
                                         local ok, value = pcall(json.decode, j.value)
