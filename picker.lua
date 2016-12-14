@@ -26,7 +26,7 @@ function _M.init(shm)
     _M.storage = shm
 end
 
-function _M.update(name)
+local function update(name)
     local ver  = _M.storage:get(name .. "|version")
     local data = _M.storage:get(name .. "|peers")
     local ok, value = pcall(json.decode, data)
@@ -48,7 +48,7 @@ function _M.rr(name)
     -- if the version is behind, update
     local ver = _M.storage:get(name .. "|version")
     if not _M.data[name] or _M.data[name].version < ver then
-        local err = _M.update(name)
+        local err = update(name)
         if err then
             log(err)
             return nil
@@ -97,6 +97,9 @@ function _M.rr(name)
 end
 
 function _M.show(name)
+    if not _M.data[name] then
+        update(name)
+    end
     return _M.data[name]
 end
 

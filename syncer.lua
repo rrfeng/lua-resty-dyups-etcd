@@ -228,7 +228,7 @@ local function watch(premature, index)
 
         for n, s in pairs(upstreamList.node.nodes) do
             local name = basename(s.key)
-            _M.data[name] = {version=upstreamList.etcdIndex, peers={}}
+            _M.data[name] = {version=tonumber(upstreamList.etcdIndex), peers={}}
 
             local upstreamInfo, err = fetch(url .. name .. "?recursive=true")
             if err then
@@ -251,8 +251,8 @@ local function watch(premature, index)
 
                 end
                 -- Keep the version is the newest response x-etcd-index
-                _M.data[name].version = upstreamInfo.etcdIndex
-                _M.data._version =  _M.data[name].version
+                _M.data[name].version = tonumber(upstreamInfo.etcdIndex)
+                _M.data._version = _M.data[name].version
             end
         end
 
@@ -289,7 +289,7 @@ local function watch(premature, index)
             elseif action == "set" or action == "update" then
                 local new_svc = target:match('([^/]*).*')
                 if not _M.data[new_svc] then
-                    _M.data[new_svc] = {version=change.etcdIndex, peers={}}
+                    _M.data[new_svc] = {version=tonumber(change.etcdIndex), peers={}}
                 end
             end
         else
@@ -300,7 +300,7 @@ local function watch(premature, index)
                     log("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
                 elseif action == "set" or action == "update" then
                     if not _M.data[name] then
-                        _M.data[name] = {version=change.etcdIndex, peers={peer}}
+                        _M.data[name] = {version=tonumber(change.etcdIndex), peers={peer}}
                     else
                         local index = indexof(_M.data[name].peers, peer)
                         if index == nil then
@@ -310,14 +310,14 @@ local function watch(premature, index)
                             log("MODIFY [" .. name .. "]: " .. peer.host ..":".. peer.port .. " " .. change.node.value)
                             _M.data[name].peers[index] = peer
                         end
-                        _M.data[name].version = change.node.modifiedIndex
+                        _M.data[name].version = tonumber(change.node.modifiedIndex)
                     end
                 end
             else
                 log(err)
             end
         end
-        _M.data._version = change.node.modifiedIndex
+        _M.data._version = tonumber(change.node.modifiedIndex)
         nextIndex = _M.data._version + 1
         save(true)
     end
