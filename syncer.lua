@@ -124,7 +124,7 @@ local function newPeer(key, value)
         local t = value.slow_start or 0
     end
     return { host = h,
-             port = p,
+             port = tonumber(p),
              weight = w,
              status = s,
              check = c,

@@ -27,34 +27,6 @@ function _M.init(shm)
     _M.storage = shm
 end
 
-local function update(name)
-    local ver  = _M.storage:get(name .. "|version")
-    local data = _M.storage:get(name .. "|peers")
-    local ok, value = pcall(json.decode, data)
-
-    if not ok or type(value) ~= "table" then
-        return "data format error"
-    end
-
-    if not _M.data[name] then
-        _M.data[name] = {}
-    end
-
-    _M.data[name].peers = value
-    _M.data[name].version = ver
-
-    local now = ngx_time()
-    for i=1,#value do
-        if value[i].start_at and now - value[i].start_at < 5 then
-            local ok, err = ngx_timer_at(0, slow_start, name, value[i], 1)
-            if not ok then
-                log("Error start slow_start: " .. err)
-            end
-        end
-    end
-    return nil
-end
-
 local function slow_start(premature, name, peer, t)
     if premature then return end
 
@@ -86,6 +58,34 @@ local function slow_start(premature, name, peer, t)
         log("Error start slow_start: " .. err)
         peers[i].cfg_weight = peer.weight
     end
+end
+
+local function update(name)
+    local ver  = _M.storage:get(name .. "|version")
+    local data = _M.storage:get(name .. "|peers")
+    local ok, value = pcall(json.decode, data)
+
+    if not ok or type(value) ~= "table" then
+        return "data format error"
+    end
+
+    if not _M.data[name] then
+        _M.data[name] = {}
+    end
+
+    _M.data[name].peers = value
+    _M.data[name].version = ver
+
+    local now = ngx_time()
+    for i=1,#value do
+        if value[i].start_at and now - value[i].start_at < 5 then
+            local ok, err = ngx_timer_at(0, slow_start, name, value[i], 1)
+            if not ok then
+                log("Error start slow_start: " .. err)
+            end
+        end
+    end
+    return nil
 end
 
 function _M.rr(name)
