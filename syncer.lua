@@ -293,6 +293,9 @@ local function watch(premature, index)
             if not err then
                 if action == "delete" or action == "expire" then
                     table.remove(_M.data[name].peers, indexOf(_M.data[name].peers, peer))
+                    if 0 == #_M.data[name].peers then
+                        _M.data[name] = nil
+                    end
                     log("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
                 elseif action == "set" or action == "update" then
                     if not _M.data[name] then
