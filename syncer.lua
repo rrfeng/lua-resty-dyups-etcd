@@ -28,7 +28,7 @@ local function copyTab(st)
     return tab
 end
 
-local function indexof(t, e)
+local function indexOf(t, e)
     for i=1,#t do
         if t[i].host == e.host and t[i].port == e.port then
             return i
@@ -42,7 +42,7 @@ local function basename(s)
     return y, x
 end
 
-local function split_addr(s)
+local function splitAddr(s)
     host, port = s:match("(.*):([0-9]+)")
 
     -- verify the port
@@ -69,14 +69,14 @@ local function split_addr(s)
     return host, port, nil
 end
 
-local function get_lock()
-    -- only the worker who get the lock can update the dump file.
-    -- the lock keeps 150 seconds
+local function getLock()
+    -- only the worker who get the lock can sync from etcd.
+    -- the lock keeps 150 seconds.
     if _M.lock == true then
         return true
     end
 
-    local ok, err = _M.conf.storage:add("lock", true, 25)
+    local ok, err = _M.conf.storage:add("lock", true, 12)
     if not ok then
         if err == "exists" then
             return nil
@@ -88,7 +88,7 @@ local function get_lock()
     return true
 end
 
-local function refresh_lock()
+local function refreshLock()
     local ok, err = _M.conf.storage:set("lock", true, 25)
     if not ok then
         if err == "exists" then
@@ -100,7 +100,7 @@ local function refresh_lock()
     return true
 end
 
-local function release_lock()
+local function releaseLock()
     _M.conf.storage:delete("lock")
     _M.lock = nil
     return true
@@ -109,25 +109,25 @@ end
 local function newPeer(key, value)
     local ipport, ret = basename(key)
     local name = basename(ret)
-    local h, p, err = split_addr(ipport)
+    local h, p, err = splitAddr(ipport)
     if err then
         return {}, name, err
     end
 
-    local ok, value = pcall(json.decode, value)
+    local ok, cfg = pcall(json.decode, value)
 
     local w, s, c, t = 1, "up", "/", 0
-    if type(value) == "table" then
-        local w = value.weight or 1
-        local s = value.status or "up"
-        local c = value.check_url or "/"
-        local t = value.slow_start or 0
+    if type(cft) == "table" then
+        w = cfg.weight     or 1
+        s = cfg.status     or "up"
+        c = cfg.check_url  or "/"
+        t = cfg.slow_start or 0
     end
-    return { host = h,
-             port = tonumber(p),
+    return { host   = h,
+             port   = tonumber(p),
              weight = w,
              status = s,
-             check = c,
+             check  = c,
              slow_start = t
          }, name, nil
 end
@@ -187,20 +187,15 @@ local function fetch(url)
 end
 
 local function watch(premature, index)
-    if index then
-        log("start watch 2 with: " .. index )
-    else
-        log("start full fetch")
-    end
 
     local conf = _M.conf
     if premature or ngx_worker_exiting() then
-        release_lock()
+        releaseLock()
         return
     end
 
     -- If we cannot acquire the lock, wait 1 second
-    if not get_lock() then
+    if not getLock() then
         log("Waiting 1s for pre-worker to exit...")
         local ok, err = ngx_timer_at(1, watch, index)
         if not ok then
@@ -209,7 +204,7 @@ local function watch(premature, index)
         return
     end
 
-    refresh_lock()
+    refreshLock()
 
     local nextIndex
     local url = "/v2/keys" .. conf.etcd_path
@@ -297,13 +292,13 @@ local function watch(premature, index)
             local peer, name, err = newPeer(change.node.key, change.node.value)
             if not err then
                 if action == "delete" or action == "expire" then
-                    table.remove(_M.data[name].peers, indexof(_M.data[name].peers, peer))
+                    table.remove(_M.data[name].peers, indexOf(_M.data[name].peers, peer))
                     log("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
                 elseif action == "set" or action == "update" then
                     if not _M.data[name] then
                         _M.data[name] = {version=tonumber(change.etcdIndex), peers={peer}}
                     else
-                        local index = indexof(_M.data[name].peers, peer)
+                        local index = indexOf(_M.data[name].peers, peer)
                         if index == nil then
                             log("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
                             peer.start_at = ngx_time()

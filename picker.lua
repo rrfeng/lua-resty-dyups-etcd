@@ -14,7 +14,7 @@ local function log(c)
     ngx_log(ngx_ERR, c)
 end
 
-local function indexof(t, e)
+local function indexOf(t, e)
     for i=1,#t do
         if t[i].host == e.host and t[i].port == e.port then
             return i
@@ -27,7 +27,7 @@ function _M.init(shm)
     _M.storage = shm
 end
 
-local function slow_start(premature, name, peer, t)
+local function slowStart(premature, name, peer, t)
     if premature then return end
 
     if t < 1 then t = 1 end
@@ -35,12 +35,12 @@ local function slow_start(premature, name, peer, t)
     local peers = _M.data[name].peers
     -- we must confirm the index every time
     -- if a peer disappear, index will change
-    local i =  indexof(peers, peer)
+    local i =  indexOf(peers, peer)
     if not i then
         return
     end
 
-    local times = peers[i].slow_start
+    local times = peers[i].slowStart
 
     if t > times then
         return
@@ -53,9 +53,9 @@ local function slow_start(premature, name, peer, t)
 
     peers[i].cfg_weight = peer.weight * t / times
 
-    local ok, err = ngx_timer_at(1, slow_start, name, peer, t+1)
+    local ok, err = ngx_timer_at(1, slowStart, name, peer, t+1)
     if not ok then
-        log("Error start slow_start: " .. err)
+        log("Error start slowStart: " .. err)
         peers[i].cfg_weight = peer.weight
     end
 end
@@ -79,9 +79,9 @@ local function update(name)
     local now = ngx_time()
     for i=1,#value do
         if value[i].start_at and now - value[i].start_at < 5 then
-            local ok, err = ngx_timer_at(0, slow_start, name, value[i], 1)
+            local ok, err = ngx_timer_at(0, slowStart, name, value[i], 1)
             if not ok then
-                log("Error start slow_start: " .. err)
+                log("Error start slowStart: " .. err)
             end
         end
     end
@@ -141,14 +141,12 @@ function _M.rr(name)
 end
 
 function _M.show(name)
-    if not _M.data[name] then
-        update(name)
-    end
+    update(name)
     return _M.data[name]
 end
 
 function _M.cutdown(name, peer, percent)
-    local i = indexof(_M.data[name], peer)
+    local i = indexOf(_M.data[name], peer)
     if not i then
         return 'peer not exists'
     end
@@ -157,7 +155,7 @@ function _M.cutdown(name, peer, percent)
 end
 
 function _M.recover(name, peer)
-    local i = indexof(_M.data[name], peer)
+    local i = indexOf(_M.data[name], peer)
     if not i then
         return 'peer not exists'
     end
@@ -165,13 +163,13 @@ function _M.recover(name, peer)
     return nil
 end
 
-function _M.set_black_hole(name, percent)
+function _M.setBlackHole(name, percent)
     if percent >= 1 or percent < 0 then
         return "not permitted"
     end
 
     if percent == 0 then
-        table.remove(_M.data[name].peers, indexof(_M.data[name].peers, _M.black_hole))
+        table.remove(_M.data[name].peers, indexOf(_M.data[name].peers, _M.black_hole))
         return nil
     end
 
