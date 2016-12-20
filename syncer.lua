@@ -275,7 +275,7 @@ local function watch(premature, index)
             goto continue
         end
 
-        log("recv a change: " .. json.encode(change))
+        -- log("recv a change: " .. json.encode(change))
 
         local action = change.action
         if change.node.dir then
