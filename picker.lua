@@ -4,6 +4,7 @@ local json = require "cjson"
 local ngx_timer_at = ngx.timer.at
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
+local ngx_time = ngx.time
 
 _M.ready = false
 _M.black_hole = {ip="127.0.0.1", port=2222, weight=0}
@@ -41,7 +42,50 @@ local function update(name)
 
     _M.data[name].peers = value
     _M.data[name].version = ver
+
+    local now = ngx_time()
+    for i=1,#value do
+        if value[i].start_at and now - value[i].start_at < 5 then
+            local ok, err = ngx_timer_at(0, slow_start, name, value[i], 1)
+            if not ok then
+                log("Error start slow_start: " .. err)
+            end
+        end
+    end
     return nil
+end
+
+local function slow_start(premature, name, peer, t)
+    if premature then return end
+
+    if t < 1 then t = 1 end
+
+    local peers = _M.data[name].peers
+    -- we must confirm the index every time
+    -- if a peer disappear, index will change
+    local i =  indexof(peers, peer)
+    if not i then
+        return
+    end
+
+    local times = peers[i].slow_start
+
+    if t > times then
+        return
+    end
+
+    if t == times then
+        peers[i].cfg_weight = peer.weight
+        return
+    end
+
+    peers[i].cfg_weight = peer.weight * t / times
+
+    local ok, err = ngx_timer_at(1, slow_start, name, peer, t+1)
+    if not ok then
+        log("Error start slow_start: " .. err)
+        peers[i].cfg_weight = peer.weight
+    end
 end
 
 function _M.rr(name)

@@ -2,12 +2,12 @@ local _M = {}
 local http = require "http"
 local json = require "cjson"
 
-local ngx_timer_at = ngx.timer.at
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
-local ngx_sleep = ngx.sleep
-local ngx_worker_exiting = ngx.worker.exiting
+local ngx_time = ngx.time
+local ngx_timer_at = ngx.timer.at
 local ngx_worker_id = ngx.worker.id
+local ngx_worker_exiting = ngx.worker.exiting
 
 _M.ready = false
 _M.data = {}
@@ -106,7 +106,7 @@ local function release_lock()
     return true
 end
 
-local function newpeer(key, value)
+local function newPeer(key, value)
     local ipport, ret = basename(key)
     local name = basename(ret)
     local h, p, err = split_addr(ipport)
@@ -120,14 +120,15 @@ local function newpeer(key, value)
     if type(value) == "table" then
         local w = value.weight or 1
         local s = value.status or "up"
-        local c  = value.check_url or "/"
+        local c = value.check_url or "/"
         local t = value.slow_start or 0
     end
     return { host = h,
              port = p,
              weight = w,
              status = s,
-             check = c
+             check = c,
+             slow_start = t
          }, name, nil
 end
 
@@ -244,7 +245,7 @@ local function watch(premature, index)
             log("full fetching: " .. json.encode(upstreamInfo))
             if upstreamInfo.node.dir and upstreamInfo.node.nodes then
                 for i, j in pairs(upstreamInfo.node.nodes) do
-                    local peer, _, err = newpeer(j.key, j.value)
+                    local peer, _, err = newPeer(j.key, j.value)
                     if not err then
                         _M.data[name].peers[#_M.data[name].peers+1] = peer
                     end
@@ -293,7 +294,7 @@ local function watch(premature, index)
                 end
             end
         else
-            local peer, name, err = newpeer(change.node.key, change.node.value)
+            local peer, name, err = newPeer(change.node.key, change.node.value)
             if not err then
                 if action == "delete" or action == "expire" then
                     table.remove(_M.data[name].peers, indexof(_M.data[name].peers, peer))
@@ -305,6 +306,7 @@ local function watch(premature, index)
                         local index = indexof(_M.data[name].peers, peer)
                         if index == nil then
                             log("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
+                            peer.start_at = ngx_time()
                             table.insert(_M.data[name].peers, peer)
                         else
                             log("MODIFY [" .. name .. "]: " .. peer.host ..":".. peer.port .. " " .. change.node.value)
