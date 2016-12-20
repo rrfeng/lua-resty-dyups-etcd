@@ -40,7 +40,7 @@ local function slowStart(premature, name, peer, t)
         return
     end
 
-    local times = peers[i].slowStart
+    local times = peers[i].slow_start
 
     if t > times then
         return
@@ -76,12 +76,15 @@ local function update(name)
     _M.data[name].peers = value
     _M.data[name].version = ver
 
+    -- Check if there is a new peer that needs slow start.
     local now = ngx_time()
     for i=1,#value do
-        if value[i].start_at and now - value[i].start_at < 5 then
-            local ok, err = ngx_timer_at(0, slowStart, name, value[i], 1)
-            if not ok then
-                log("Error start slowStart: " .. err)
+        if value[i].slow_start > 0 then
+            if value[i].start_at and now - value[i].start_at < 5 then
+                local ok, err = ngx_timer_at(0, slowStart, name, value[i], 1)
+                if not ok then
+                    log("Error start slowStart: " .. err)
+                end
             end
         end
     end
