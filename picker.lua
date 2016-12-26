@@ -171,21 +171,33 @@ function _M.setBlackHole(name, percent)
         return "not permitted"
     end
 
-    if percent == 0 then
-        table.remove(_M.data[name].peers, indexOf(_M.data[name].peers, _M.black_hole))
-        return nil
-    end
-
     local peers = _M.data[name].peers
-    local total_weight = 0
-    for i=1,#peers do
-        total_weight = total_weight + peers[i].cfg_weight
+    local index = indexOf(peers, _M.black_hole)
+
+    if percent == 0 then
+        if index != nil then
+            table.remove(_M.data[name].peers, index)
+            return nil
+        else
+            return nil
+        end
+    else
+        local total_weight = 0
+        for i=1,#peers do
+            total_weight = total_weight + peers[i].cfg_weight
+        end
+        local black_weight = total_weight / percent - total_weight
+
+        if index != nil then
+            _M.data[name].peers[index].cfg_weight = black_weight
+            return nil
+        else
+            local black_peer = _M.black_hole
+            black_peer.cfg_weight = black_weight
+            table.insert(_M.data[name].peers, black_peer)
+            return nil
+        end
     end
-    local black_weight = total_weight / percent - total_weight
-    local black_peer = _M.black_hole
-    black_peer.cfg_weight = black_weight
-    table.insert(_M.data[name].peers, black_peer)
-    return nil
 end
 
 return _M
