@@ -117,7 +117,7 @@ local function newPeer(key, value)
     local ok, cfg = pcall(json.decode, value)
 
     local w, s, c, t = 1, "up", "/", 0
-    if type(cft) == "table" then
+    if type(cfg) == "table" then
         w = cfg.weight     or 1
         s = cfg.status     or "up"
         c = cfg.check_url  or "/"
@@ -132,34 +132,21 @@ local function newPeer(key, value)
          }, name, nil
 end
 
-local function save(fsave)
+local function save()
     local dict = _M.conf.storage
 
-    -- Save to file
-    if fsave then
-        local f_path = _M.conf.dump_file .. _M.conf.etcd_path:gsub("/", "_")
-        local file, err = io.open(f_path, 'w')
-        if file == nil then
-            log("Can't open file: " .. f_path .. err)
-            return false
-        end
-
-        local data = json.encode(_M.data)
-        file:write(data)
-        file:flush()
-        file:close()
-    end
-
-    -- Save to shared memory
+    local allname = ""
     for name, upstream in pairs(_M.data) do
         if name ~= "_version" then
             dict:set(name .. "|version", upstream.version)
             dict:set(name .. "|peers", json.encode(upstream.peers))
+            allname = allname .. "|" .. name
         end
     end
+    dict:set("_allname", all_names)
     dict:set("_version", _M.data._version)
 
-    return true
+    return
 end
 
 local function fetch(url)
@@ -255,7 +242,7 @@ local function watch(premature, index)
         if _M.data._version then
             nextIndex = _M.data._version + 1
         end
-        save(true)
+        save()
         _M.conf.storage:set("ready", true)
 
     -- Watch the change and update the data.
@@ -319,7 +306,7 @@ local function watch(premature, index)
         end
         _M.data._version = tonumber(change.node.modifiedIndex)
         nextIndex = _M.data._version + 1
-        save(true)
+        save()
     end
 
     ::continue::
@@ -339,32 +326,43 @@ function _M.init(conf)
     _M.conf = conf
 
     local nextIndex
-    -- Every time reload, load the upstreams from file.
-    local f_path = _M.conf.dump_file .. _M.conf.etcd_path:gsub("/", "_")
-    local file, err = io.open(f_path, "r")
-    if file == nil then
-        log(err)
+
+    local dict = _M.conf.storage
+
+    local allname = dict:get("_allname")
+    local version = dict:get("_version")
+
+    -- Not synced before, not reload but newly start
+    if not allname or not version then
         local ok, err = ngx_timer_at(0, watch, nextIndex)
         if not ok then
             log("Error start watch: " .. err)
         end
         return
+
+    -- Load data from shm
     else
-        local d = file:read("*a")
-        local ok, data = pcall(json.decode, d)
-        if not ok then
-            log(data)
-            local ok, err = ngx_timer_at(0, watch, nextIndex)
+        _M.data = {}
+        for name in allname:gmatch("[^|]+") do
+            upst = dict:get(name .. "|peers")
+            vers = dict:get(name .. "|version")
+
+            local ok, data = pcall(json.decode, upst)
+
+            -- Any error occurs, goto full fetch
             if not ok then
-                log("Error start watch: " .. err)
+                local ok, err = ngx_timer_at(0, watch, nextIndex)
+                if not ok then
+                    log("Error start watch: " .. err)
+                end
+                return
+            else
+                _M.data[name] = {version = vers, peers = data}
             end
-            return
-        else
-            _M.data = copyTab(data)
-            file:close()
-            save(false)
-            nextIndex = _M.data._version + 1
         end
+
+        _M.data._version = version
+        nextIndex = _M.data._version + 1
     end
 
     -- Start the etcd watcher
