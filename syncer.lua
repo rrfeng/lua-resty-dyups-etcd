@@ -177,9 +177,9 @@ local function fetch(url)
         return nil, err
     end
 
-    local data, err = json.decode(body)
-    if err then
-        return nil, err
+    local ok, data = pcall(json.decode, body)
+    if not ok then
+        return nil, data
     end
 
     data.etcdIndex = res.headers["x-etcd-index"]
