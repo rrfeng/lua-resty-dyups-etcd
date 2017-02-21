@@ -175,7 +175,7 @@ function _M.setBlackHole(name, percent)
     local index = indexOf(peers, _M.black_hole)
 
     if percent == 0 then
-        if index != nil then
+        if index then
             table.remove(_M.data[name].peers, index)
             return nil
         else
@@ -188,7 +188,7 @@ function _M.setBlackHole(name, percent)
         end
         local black_weight = total_weight / percent - total_weight
 
-        if index != nil then
+        if index then
             _M.data[name].peers[index].cfg_weight = black_weight
             return nil
         else
