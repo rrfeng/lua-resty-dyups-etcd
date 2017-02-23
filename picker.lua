@@ -144,6 +144,10 @@ function _M.rr(name)
 end
 
 function _M.show(name)
+    if not name then
+        return {}
+    end
+
     update(name)
     return _M.data[name]
 end

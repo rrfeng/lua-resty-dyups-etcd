@@ -143,7 +143,7 @@ local function save()
             allname = allname .. "|" .. name
         end
     end
-    dict:set("_allname", all_names)
+    dict:set("_allname", allname)
     dict:set("_version", _M.data._version)
 
     return
