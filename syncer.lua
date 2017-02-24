@@ -132,17 +132,36 @@ local function newPeer(key, value)
          }, name, nil
 end
 
-local function save()
+local function save(name)
     local dict = _M.conf.storage
+
+    -- no name means save all
+    if not name then
+        for name, upstream in pairs(_M.data) do
+            if name ~= "_version" then
+                dict:set(name .. "|version", upstream.version)
+                dict:set(name .. "|peers", json.encode(upstream.peers))
+            end
+        end
+    else
+        -- remove the deleted upstream
+        if not _M.data[name] then
+            dict:delete(name .. "|version")
+            dict:delete(name .. "|peers")
+        -- save the updated upstream
+        else
+            dict:set(name .. "|version", _M.data[name].version)
+            dict:set(name .. "|peers", json.encode(_M.data[name].peers))
+        end
+    end
 
     local allname = ""
     for name, upstream in pairs(_M.data) do
         if name ~= "_version" then
-            dict:set(name .. "|version", upstream.version)
-            dict:set(name .. "|peers", json.encode(upstream.peers))
-            allname = allname .. "|" .. name
+           allname = allname .. "|" .. name
         end
     end
+
     dict:set("_allname", allname)
     dict:set("_version", _M.data._version)
 
@@ -266,20 +285,23 @@ local function watch(premature, index)
 
         local action = change.action
         if change.node.dir then
-            local target = change.node.key:match(_M.conf.etcd_path .. '(.*)/?')
+            local name = change.node.key:match(_M.conf.etcd_path .. '(.*)/?')
             if action == "delete" then
-                _M.data[target] = nil
+                _M.data[name] = nil
             elseif action == "set" or action == "update" then
-                local new_svc = target:match('([^/]*).*')
-                if not _M.data[new_svc] then
-                    _M.data[new_svc] = {version=tonumber(change.etcdIndex), peers={}}
+                local name = target:match('([^/]*).*')
+                if not _M.data[name] then
+                    _M.data[name] = {version=tonumber(change.etcdIndex), peers={}}
                 end
             end
+            _M.data._version = tonumber(change.node.modifiedIndex)
+            save(name)
         else
             local peer, name, err = newPeer(change.node.key, change.node.value)
             if not err then
                 if action == "delete" or action == "expire" then
                     table.remove(_M.data[name].peers, indexOf(_M.data[name].peers, peer))
+                    _M.data[name].version = change.etcdIndex
                     if 0 == #_M.data[name].peers then
                         _M.data[name] = nil
                     end
@@ -287,6 +309,7 @@ local function watch(premature, index)
                 elseif action == "set" or action == "update" then
                     if not _M.data[name] then
                         _M.data[name] = {version=tonumber(change.etcdIndex), peers={peer}}
+                        log("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
                     else
                         local index = indexOf(_M.data[name].peers, peer)
                         if index == nil then
@@ -303,10 +326,10 @@ local function watch(premature, index)
             else
                 log(err)
             end
+            _M.data._version = tonumber(change.node.modifiedIndex)
+            save(name)
         end
-        _M.data._version = tonumber(change.node.modifiedIndex)
         nextIndex = _M.data._version + 1
-        save()
     end
 
     ::continue::

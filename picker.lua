@@ -70,6 +70,11 @@ local function update(name)
 
     local ver  = _M.storage:get(name .. "|version")
     local data = _M.storage:get(name .. "|peers")
+
+    if not ver and not data then
+        _M.data[name] = nil
+    end
+
     local ok, value = pcall(json.decode, data)
 
     if not ok or type(value) ~= "table" then
@@ -84,11 +89,16 @@ local function update(name)
     _M.data[name].version = ver
 
     -- Check if there is a new peer that needs slow start.
+    local peers = _M.data[name].peers
+    if #peers <= 1 then
+        return
+    end
+
     local now = ngx_time()
-    for i=1,#value do
-        if value[i].slow_start > 0 then
-            if value[i].start_at and now - value[i].start_at < 5 then
-                local ok, err = ngx_timer_at(0, slowStart, name, value[i], 1)
+    for i=1,#peers do
+        if peers[i].slow_start > 0 then
+            if peers[i].start_at and now - peers[i].start_at < 5 then
+                local ok, err = ngx_timer_at(0, slowStart, name, peers[i], 1)
                 if not ok then
                     log("Error start slowStart: " .. err)
                 end
@@ -101,6 +111,10 @@ end
 function _M.rr(name)
     -- before pick check update
     update(name)
+
+    if not _M.data[name] then
+        return nil
+    end
 
     -- start to pick a peer
     local peers = _M.data[name].peers
@@ -136,6 +150,14 @@ function _M.rr(name)
         ::continue::
     end
 
+    -- if all peers cfg_weight is 0, then reset.
+    if not pick and total == 0 then
+        for i=1,#peers do
+            peers[i].cfg_weight = peers[i].weight or 1
+        end
+        pick = peers[1]
+    end
+
     if pick then
         pick.run_weight = pick.run_weight - total
     end
@@ -148,7 +170,6 @@ function _M.show(name)
         return {}
     end
 
-    update(name)
     return _M.data[name]
 end
 
