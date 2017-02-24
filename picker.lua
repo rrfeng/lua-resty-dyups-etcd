@@ -61,6 +61,13 @@ local function slowStart(premature, name, peer, t)
 end
 
 local function update(name)
+
+    -- if the version is same, no update
+    local ver = _M.storage:get(name .. "|version")
+    if _M.data[name] and _M.data[name].version == ver then
+        return nil
+    end
+
     local ver  = _M.storage:get(name .. "|version")
     local data = _M.storage:get(name .. "|peers")
     local ok, value = pcall(json.decode, data)
@@ -92,15 +99,8 @@ local function update(name)
 end
 
 function _M.rr(name)
-    -- if the version is behind, update
-    local ver = _M.storage:get(name .. "|version")
-    if not _M.data[name] or _M.data[name].version < ver then
-        local err = update(name)
-        if err then
-            log(err)
-            return nil
-        end
-    end
+    -- before pick check update
+    update(name)
 
     -- start to pick a peer
     local peers = _M.data[name].peers
