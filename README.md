@@ -6,7 +6,9 @@ A lua module for OpenResty, can dynamically update the upstreams from etcd.
 ```
 
 ## DEPENDENCE
-- openresty-1.9.7.3 + (balancer_by_lua*)
+- openresty-1.9.11.1 and higher
+- balancer_by_lua
+- ngx.worker.id()
 - lua-resty-http
 - cjson
 
@@ -14,30 +16,29 @@ A lua module for OpenResty, can dynamically update the upstreams from etcd.
 
 ### Prepare data in etcd:
 ```
-etcdctl set /v1/testing/services/my_test_service/10.1.1.1:8080 '{"weight": 3}'
-etcdctl set /v1/testing/services/my_test_service/10.1.1.2:8080 '{"weight": 4}'
+etcdctl set /v1/testing/services/my_test_service/10.1.1.1:8080 '{"weight": 3, "slow_start": 30, "checkurl": "/health"}'
+etcdctl set /v1/testing/services/my_test_service/10.1.1.2:8080 '{"weight": 4, "status": "down"}'
 etcdctl set /v1/testing/services/my_test_service/10.1.1.3:8080 '{"weight": 5}'
 
-Value should be a json, now round_robin_with_weight() support the weight for load balancing, works like nginx round-robin.
 The default weight is 1, if not set in ETCD, or json parse error and so on.
 ```
 
 ### Init the module:
 ```
 lua_socket_log_errors off; # recommend
-lua_shared_dict dyups 10k; # for global lock and version
+lua_shared_dict lreu-upstream 1m; # for storeage of upstreams
 init_worker_by_lua_block {
-    local u = require "dyups"
-    u.init({
+    local syncer = require "lreu.syncer"
+    syncer.init({
         etcd_host = "127.0.0.1",
         etcd_port = 2379,
         etcd_path = "/v1/testing/services/",
-        -- The real path of the dump file will be: /tmp/nginx-upstreams_v1_testing_services_
-        dump_file = "/tmp/nginx-upstreams",
-        -- Slow-start in N seconds from 0 to configured weight for the newly added peer
-        slow_start = 10,
-        dict = ngx.shared.dyups
+        storage = ngx.shared.lreu-upstream
     })
+
+    -- init the picker with the shared storage(read only)
+    local picker = require "lreu.picker"
+    picker.init(ngx.shared.lreu-upstream)
 }
 ```
 ### Get a server in upstream:
@@ -47,8 +48,8 @@ upstream test {
 
     balancer_by_lua_block {
         local balancer = require "ngx.balancer"
-        local u = require "dyups"
-        local s, err = u.round_robin_server("my_test_service")
+        local u = require "lreu.picker"
+        local s, err = u.rr("my_test_service")
         if not s then
             ngx.log(ngx.ERR, err)
             return ngx.exit(500)
@@ -63,39 +64,14 @@ upstream test {
 ```
 
 ## Functions
-### dyups.round_robin_server(service_name)
-```
-Get a backend server from the server list in a upstream, and using round-robin algorithm.
-return a table: 
-{
-  host = "127.0.0.1",
-  port = 1234
-}
-```
-### dyups.all_servers(service_name)
-```
-Get all backend servers in a upstream.
-return a table:
-{
-  {host= "127.0.0.1", port = 1234},
-  {host= "127.0.0.2", port = 1234},
-  {host= "127.0.0.3", port = 1234}
-}
-
-So you can realize your own balance algorithms.
-```
-
-## dyups.round_robin_with_weight(service_name)
-```
-Like round_robin_server, you should use this function instead of round_robin_serverZ().
-This support peers weight.
-```
+### picker.rr(service_name)
+### picker.show(service_name)
 
 ## Todo
---- Etcd cluster support.
---- Add more load-balance-alg.
---- ~~Upstream peers weight support.~~
---- Upstream health check support.
+- Etcd cluster support.
+- Add more load-balance-alg.
+- ~~Upstream peers weight support.~~
+- Upstream health check support.
 
 ## License
 ```
