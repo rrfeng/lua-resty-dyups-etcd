@@ -285,9 +285,9 @@ local function watch(premature, index)
 
         local action = change.action
         if change.node.dir then
-            local name = change.node.key:match(_M.conf.etcd_path .. '(.*)/?')
+            local target = change.node.key:match(_M.conf.etcd_path .. '(.*)/?')
             if action == "delete" then
-                _M.data[name] = nil
+                _M.data[target] = nil
             elseif action == "set" or action == "update" then
                 local name = target:match('([^/]*).*')
                 if not _M.data[name] then
