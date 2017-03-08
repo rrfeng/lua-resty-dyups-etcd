@@ -43,6 +43,9 @@ local function basename(s)
 end
 
 local function splitAddr(s)
+    if not s then
+        return "127.0.0.1", 0, "nil args"
+    end
     host, port = s:match("(.*):([0-9]+)")
 
     -- verify the port
@@ -107,8 +110,7 @@ local function releaseLock()
 end
 
 local function newPeer(key, value)
-    local ipport, ret = basename(key)
-    local name = basename(ret)
+    local name, ipport = key:match(_M.conf.etcd_path .. '([^/]+)/([^/]+)$')
     local h, p, err = splitAddr(ipport)
     if err then
         return {}, name, err
@@ -281,17 +283,18 @@ local function watch(premature, index)
             goto continue
         end
 
-        -- log("recv a change: " .. json.encode(change))
+        log("recv a change: " .. json.encode(change))
 
         local action = change.action
         if change.node.dir then
-            local target = change.node.key:match(_M.conf.etcd_path .. '(.*)/?')
-            if action == "delete" then
-                _M.data[target] = nil
-            elseif action == "set" or action == "update" then
-                local name = target:match('([^/]*).*')
-                if not _M.data[name] then
-                    _M.data[name] = {version=tonumber(change.etcdIndex), peers={}}
+            local name = change.node.key:match(_M.conf.etcd_path .. '([^/]+)$')
+            if name then
+                if action == "delete" then
+                    _M.data[name] = nil
+                elseif action == "set" or action == "update" then
+                    if not _M.data[name] then
+                        _M.data[name] = {version=tonumber(change.etcdIndex), peers={}}
+                    end
                 end
             end
             _M.data._version = tonumber(change.node.modifiedIndex)
