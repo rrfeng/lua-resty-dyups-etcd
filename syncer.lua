@@ -8,12 +8,13 @@ local ngx_time = ngx.time
 local ngx_timer_at = ngx.timer.at
 local ngx_worker_id = ngx.worker.id
 local ngx_worker_exiting = ngx.worker.exiting
+local ngx_sleep = ngx.sleep
 
 _M.ready = false
 _M.data = {}
 
 local function log(c)
-    ngx_log(ngx_ERR, c)
+    pcall(ngx_log, ngx_ERR, c)
 end
 
 local function copyTab(st)
@@ -222,11 +223,19 @@ local function watch(premature, index)
         local upstreamList, err = fetch(url .. "?recursive=true")
         if err then
             log("When fetch from etcd: " .. err)
+            ngx_sleep(1)
             goto continue
         end
 
         if upstreamList.errorCode then
             log("When fetch from etcd: " .. upstreamList.message)
+            ngx_sleep(1)
+            goto continue
+        end
+
+        if not upstreamList.node.nodes then
+            log("Empty dir: " .. upstreamList.message)
+            ngx_sleep(1)
             goto continue
         end
 
@@ -237,22 +246,26 @@ local function watch(premature, index)
             local upstreamInfo, err = fetch(url .. name .. "?recursive=true")
             if err then
                 log("When fetch from etcd: " .. err)
+                ngx_sleep(1)
                 goto continue
             end
 
             if upstreamList.errorCode then
                 log("When fetch from etcd: " .. upstreamList.message)
+                ngx_sleep(1)
                 goto continue
             end
 
             log("full fetching: " .. json.encode(upstreamInfo))
-            if upstreamInfo.node.dir and upstreamInfo.node.nodes then
-                for i, j in pairs(upstreamInfo.node.nodes) do
-                    local peer, _, err = newPeer(j.key, j.value)
-                    if not err then
-                        _M.data[name].peers[#_M.data[name].peers+1] = peer
-                    end
+            if upstreamInfo.node.dir then
+                if upstreamInfo.node.nodes then
+                    for i, j in pairs(upstreamInfo.node.nodes) do
+                        local peer, _, err = newPeer(j.key, j.value)
+                        if not err then
+                            _M.data[name].peers[#_M.data[name].peers+1] = peer
+                        end
 
+                    end
                 end
                 -- Keep the version is the newest response x-etcd-index
                 _M.data[name].version = tonumber(upstreamInfo.etcdIndex)
@@ -272,14 +285,17 @@ local function watch(premature, index)
         local change, err = fetch(s_url)
         if err == "timeout" then
             nextIndex = _M.data._version + 1
+            ngx_sleep(1)
             goto continue
         elseif err ~= nil then
             log("Error when watching etcd: ", err)
+            ngx_sleep(1)
             goto continue
         end
 
         if change.errorCode == 401 then
             nextIndex = nil
+            ngx_sleep(1)
             goto continue
         end
 
