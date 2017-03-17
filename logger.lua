@@ -1,4 +1,5 @@
 local _M = {}
+local ngx_time = ngx.time
 
 local function splitstr(str)
     local t = {}
@@ -8,71 +9,76 @@ local function splitstr(str)
     return t
 end
 
-local function put(name, peer, time, httpcode)
+local function put(name, peer, rt, code)
     local dict = _M.storage
-    local status
-    if not httpcode then
-        status = "fail"
-    else
-        local code = tonumber(httpcode)
-        if code < 500 then
-            status = "success"
-        elseif code == 502 then
-            status = "fatal"
-        else
-            status = "fail"
-        end
-    end
+    local t = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
 
-    local key = name .. "|" .. peer
-
-    -- we store the peer list in a key:
-    -- there is a bug here, may store a peer twice
-    if dict:add(key, true) then
-        local peer_list = dict:get(name .. "_list")
-        if not peer_list then
-            dict:set(name .. "_list", peer)
-        else
-            dict:set(name .. "_list", peer_list .. "|" .. peer)
-        end
-    end
+    local key = table.concat({name, t, peer, code}, "|")
+    local key_rt = table.concat({name, t, peer, "rt"}, "|")
 
     -- count total requests
-    local newval, err = dict:incr(key .. "|total", 1)
+    local newval, err = dict:incr(key, 1)
     if not newval and err == "not found" then
-        dict:add(key .. "|total", 0)
-        dict:incr(key .. "|total", 1)
+        dict:add(key, 0)
+        dict:incr(key, 1)
     end
 
-    if status == "success" then
-        -- sum of response_time, only success
-        local key = name .. "|" .. peer
-        local s = dict:get(key .. "|rtsum") or 0
-        s = s + tonumber(time)
-        dict:set(key .. "|rtsum", s)
-    else
-        local newval, err = dict:incr(key .. "|" .. status, 1)
-        if not newval and err == "not found" then
-            dict:add(key .. "|" .. status, 0)
-            dict:incr(key .. "|" .. status, 1)
-        end
-    end
+    -- sum of response_time
+    local s = dict:get(key_rt) or 0
+    s = s + tonumber(rt)
+    dict:set(key_rt, s)
 
     return
 end
 
-function _M.init(shm)
+function _M.get(name, peer)
+    local dict = _M.storage
+    local t = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
+
+    local peer_stat = {peer=peer, rtsum=0, stat={}}
+
+    for code in code_list do
+        local key = table.concat({name, t, peer, code}, "|")
+        local c = dict:get(key) or 0
+        local s = {code=code, count=c}
+        table.insert(peer_stat.stat, s)
+    end
+
+    local rt = dict:get(table.concat({name, t, peer, "rt"}, "|")) or 0
+    peer_stat.rtsum = rt
+
+    return peer_stat
+end
+
+function _M.init(shm, interval, upstream_storage)
+    if not shm then
+        log("logger configuration error")
+        _M.ok = false
+        return
+    end
+
+    if not interval then
+        _M.interval = 5
+        log("logger configuration missing interval, default 5s")
+    else
+        _M.interval = tonumber(interval)
+    end
+
+    if upstream_storage then
+        _M.upstream = upstream_storage
+    end
+
     _M.storage = shm
+    _M.ok = true
     return
 end
 
 function _M.calc()
-    if not ngx.var.host or ngx.var.host == "_" then
+    if not _M.ok then
         return
     end
 
-    if _M.storage == nil then
-        ngx.log(ngx.ERR, "no storage configured ")
+    if not ngx.var.host or ngx.var.host == "_" then
         return
     end
 
@@ -100,22 +106,52 @@ function _M.calc()
     return
 end
 
-function _M.report(name)
-    local dict = _M.storage
-    local peer_list = dict:get(name .. "_list")
-    if peer_list == nil then
-        return nil
+function _M.getPeerList(name)
+    if not name or not _M.upstream then
+        return
     end
 
-    local statistics = {}
-    for peer in peer_list:gmatch('[^|]+') do
-        local fail    = dict:get(name .. "|" .. peer .. "|fail")  or 0
-        local fatal   = dict:get(name .. "|" .. peer .. "|fatal") or 0
-        local total   = dict:get(name .. "|" .. peer .. "|total") or 0
-        local rtsum   = dict:get(name .. "|" .. peer .. "|rtsum") or 0
-        table.insert(statistics, {peer=peer, total=total, fatal=fatal, fail=fail, rtsum=rtsum})
+    local data = _M.upstream:get(name .. "|peers")
+    local ok, peers = pcall(json.decode, data)
+
+    if not ok or type(peers) ~= "table" then
+        return
     end
-    return statistics
+
+    local result = {}
+    for i=1,#peers do
+        local peer = table.concat({peers[i].host, peers[i].port}, ":")
+        table.insert(result, peer)
+    end
+
+    return result
+end
+
+function _M.report(name, peer)
+    if not name then
+        return
+    end
+
+    local dict = _M.storage
+    local report = {name=name, statistics={}}
+
+    if peer then
+        local peer_stat = _M.get(name, peer)
+        table.insert(report.statistics, peer_stat)
+    else
+        local peer_list = _M.getPeerList(name)
+        if not peer_list or #peer_list == 0 then
+            return
+        end
+
+        local report = {}
+        for peer in peer_list do
+            local peer_stat = _M.get(name, peer)
+            table.insert(report.statistics, peer_stat)
+        end
+    end
+
+    return report
 end
 
 return _M
