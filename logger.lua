@@ -1,15 +1,26 @@
 local _M = {}
+local json = require "cjson"
 local ngx_time = ngx.time
+
+_M.storage = nil
+_M.upstream = nil
+_M.interval = nil
+_M.ok = false
+
+-- from log
+_M.code_list = { 200, 202, 204, 301, 302, 304, 400, 401, 403, 404, 405, 408, 409, 413, 499, 500, 502, 503, 504 }
 
 local function splitstr(str)
     local t = {}
-    for i in str:gmatch("[^ ,]") do
+    local s = str:gmatch("[^ ,]")
+    for _, i in pairs(s) do
         t[#t+1] = i
     end
     return t
 end
 
 local function put(name, peer, rt, code)
+    local ttl = _M.interval * 3
     local dict = _M.storage
     local t = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
 
@@ -19,29 +30,40 @@ local function put(name, peer, rt, code)
     -- count total requests
     local newval, err = dict:incr(key, 1)
     if not newval and err == "not found" then
-        dict:add(key, 0)
+        local ok, err = dict:safe_add(key, 0, ttl)
+        if not ok then
+            log("logger: " .. err)
+            return
+        end
         dict:incr(key, 1)
     end
 
     -- sum of response_time
     local s = dict:get(key_rt) or 0
     s = s + tonumber(rt)
-    dict:set(key_rt, s)
+
+    local ok, err = dict:safe_set(key_rt, s, ttl)
+    if not ok then
+        log("logger: " .. err)
+        return
+    end
 
     return
 end
 
-function _M.get(name, peer)
+local function get(name, peer)
     local dict = _M.storage
     local t = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
 
     local peer_stat = {peer=peer, rtsum=0, stat={}}
 
-    for code in code_list do
+    for _, code in pairs(_M.code_list) do
         local key = table.concat({name, t, peer, code}, "|")
         local c = dict:get(key) or 0
-        local s = {code=code, count=c}
-        table.insert(peer_stat.stat, s)
+        if c then
+            local s = {code=code, count=c}
+            table.insert(peer_stat.stat, s)
+        end
     end
 
     local rt = dict:get(table.concat({name, t, peer, "rt"}, "|")) or 0
@@ -106,7 +128,7 @@ function _M.calc()
     return
 end
 
-function _M.getPeerList(name)
+local function getPeerList(name)
     if not name or not _M.upstream then
         return
     end
@@ -136,17 +158,17 @@ function _M.report(name, peer)
     local report = {name=name, statistics={}}
 
     if peer then
-        local peer_stat = _M.get(name, peer)
+        local peer_stat = get(name, peer)
         table.insert(report.statistics, peer_stat)
     else
-        local peer_list = _M.getPeerList(name)
+        local peer_list = getPeerList(name)
         if not peer_list or #peer_list == 0 then
             return
         end
 
         local report = {}
-        for peer in peer_list do
-            local peer_stat = _M.get(name, peer)
+        for _, peer in pairs(peer_list) do
+            local peer_stat = get(name, peer)
             table.insert(report.statistics, peer_stat)
         end
     end
