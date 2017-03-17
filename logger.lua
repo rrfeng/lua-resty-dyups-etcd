@@ -12,8 +12,7 @@ _M.code_list = { 200, 202, 204, 301, 302, 304, 400, 401, 403, 404, 405, 408, 409
 
 local function splitstr(str)
     local t = {}
-    local s = str:gmatch("[^ ,]")
-    for _, i in pairs(s) do
+    for i in str:gmatch("[^ ,]") do
         t[#t+1] = i
     end
     return t
@@ -59,7 +58,7 @@ local function get(name, peer)
 
     for _, code in pairs(_M.code_list) do
         local key = table.concat({name, t, peer, code}, "|")
-        local c = dict:get(key) or 0
+        local c = dict:get(key)
         if c then
             local s = {code=code, count=c}
             table.insert(peer_stat.stat, s)
@@ -166,14 +165,13 @@ function _M.report(name, peer)
             return
         end
 
-        local report = {}
         for _, peer in pairs(peer_list) do
             local peer_stat = get(name, peer)
             table.insert(report.statistics, peer_stat)
         end
     end
 
-    return report
+    return json.encode(report)
 end
 
 return _M
