@@ -167,10 +167,10 @@ end
 
 function _M.show(name)
     if not name then
-        return {}
+        return "{}"
     end
 
-    return _M.data[name]
+    return json.encode(_M.data[name])
 end
 
 function _M.cutdown(name, peer, percent)
