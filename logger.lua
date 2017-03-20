@@ -7,6 +7,10 @@ _M.upstream = nil
 _M.interval = nil
 _M.ok = false
 
+local function log(c)
+    pcall(ngx_log, ngx_ERR, c)
+end
+
 -- from log
 _M.code_list = { 200, 202, 204, 301, 302, 304, 400, 401, 403, 404, 405, 408, 409, 413, 499, 500, 502, 503, 504 }
 
@@ -21,10 +25,10 @@ end
 local function put(name, peer, rt, code)
     local ttl = _M.interval * 3
     local dict = _M.storage
-    local t = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
+    local time_point = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
 
-    local key = table.concat({name, t, peer, code}, "|")
-    local key_rt = table.concat({name, t, peer, "rt"}, "|")
+    local key = table.concat({name, time_point, peer, code}, "|")
+    local key_rt = table.concat({name, time_point, peer, "rt"}, "|")
 
     -- count total requests
     local newval, err = dict:incr(key, 1)
@@ -38,8 +42,9 @@ local function put(name, peer, rt, code)
     end
 
     -- sum of response_time
+    local cost = tonumber(rt) or tonumber(ngx.var.request_time) or 0
     local s = dict:get(key_rt) or 0
-    s = s + tonumber(rt)
+    s = s + cost
 
     local ok, err = dict:safe_set(key_rt, s, ttl)
     if not ok then
@@ -52,12 +57,12 @@ end
 
 local function get(name, peer)
     local dict = _M.storage
-    local t = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
+    local time_point = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
 
     local peer_stat = {peer=peer, rtsum=0, stat={}}
 
     for _, code in pairs(_M.code_list) do
-        local key = table.concat({name, t, peer, code}, "|")
+        local key = table.concat({name, time_point, peer, code}, "|")
         local c = dict:get(key)
         if c then
             local s = {code=code, count=c}
@@ -65,7 +70,7 @@ local function get(name, peer)
         end
     end
 
-    local rt = dict:get(table.concat({name, t, peer, "rt"}, "|")) or 0
+    local rt = dict:get(table.concat({name, time_point, peer, "rt"}, "|")) or 0
     peer_stat.rtsum = rt
 
     return peer_stat
@@ -108,7 +113,11 @@ function _M.calc()
         return
     end
 
-    local name     = ngx.var.backname
+    local name = ngx.var.backname
+    if not name or name == "" then
+        return
+    end
+
     local status   = ngx.var.upstream_status
     local resptime = ngx.var.upstream_response_time
 
