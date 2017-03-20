@@ -25,7 +25,7 @@ end
 local function put(name, peer, rt, code)
     local ttl = _M.interval * 3
     local dict = _M.storage
-    local time_point = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
+    local time_point = math.ceil(ngx_time() / _M.interval) * _M.interval
 
     local key = table.concat({name, time_point, peer, code}, "|")
     local key_rt = table.concat({name, time_point, peer, "rt"}, "|")
@@ -55,9 +55,8 @@ local function put(name, peer, rt, code)
     return
 end
 
-local function get(name, peer)
+local function get(name, peer, time_point)
     local dict = _M.storage
-    local time_point = math.ceil(ngx_time() / _M.interval + 1) * _M.interval
 
     local peer_stat = {peer=peer, rtsum=0, stat={}}
 
@@ -163,10 +162,11 @@ function _M.report(name, peer)
     end
 
     local dict = _M.storage
-    local report = {name=name, statistics={}}
+    local tp = math.floor(ngx_time() / _M.interval) * _M.interval
+    local report = {name=name, timestamp=tp, statistics={}}
 
     if peer then
-        local peer_stat = get(name, peer)
+        local peer_stat = get(name, peer, tp)
         table.insert(report.statistics, peer_stat)
     else
         local peer_list = getPeerList(name)
@@ -175,7 +175,7 @@ function _M.report(name, peer)
         end
 
         for _, peer in pairs(peer_list) do
-            local peer_stat = get(name, peer)
+            local peer_stat = get(name, peer, tp)
             table.insert(report.statistics, peer_stat)
         end
     end
