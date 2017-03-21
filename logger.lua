@@ -84,8 +84,10 @@ local function get(name, peer, t_start, t_end)
             rtsum = rtsum + rt
         end
 
-        local s = {code=code, count=count}
-        table.insert(peer_stat.stat, s)
+        if count > 0 then
+            local s = {code=code, count=count}
+            table.insert(peer_stat.stat, s)
+        end
     end
 
     peer_stat.rtsum = rtsum
