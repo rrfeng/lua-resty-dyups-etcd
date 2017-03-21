@@ -23,9 +23,9 @@ local function splitstr(str)
 end
 
 local function put(name, peer, rt, code)
-    local ttl = _M.interval * 3
+    local ttl = _M.max_keep_time
     local dict = _M.storage
-    local time_point = math.ceil(ngx_time() / _M.interval) * _M.interval
+    local time_point = ngx_time()
 
     local key = table.concat({name, time_point, peer, code}, "|")
     local key_rt = table.concat({name, time_point, peer, "rt"}, "|")
@@ -67,38 +67,44 @@ local function put(name, peer, rt, code)
     return
 end
 
-local function get(name, peer, time_point)
+local function get(name, peer, t_start, t_end)
     local dict = _M.storage
-
     local peer_stat = {peer=peer, rtsum=0, stat={}}
 
+    local rtsum = 0
     for _, code in pairs(_M.code_list) do
-        local key = table.concat({name, time_point, peer, code}, "|")
-        local c = dict:get(key)
-        if c then
-            local s = {code=code, count=c}
-            table.insert(peer_stat.stat, s)
+        local count = 0
+        for ts = t_start,t_end do
+            local key = table.concat({name, ts, peer, code}, "|")
+            local c = dict:get(key) or 0
+            count = count + c
+
+            local rt_key = table.concat({name, ts, peer, "rt"}, "|")
+            local rt = dict:get(rt_key) or 0
+            rtsum = rtsum + rt
         end
+
+        local s = {code=code, count=count}
+        table.insert(peer_stat.stat, s)
     end
 
-    local rt = dict:get(table.concat({name, time_point, peer, "rt"}, "|")) or 0
-    peer_stat.rtsum = rt
+    peer_stat.rtsum = rtsum
 
     return peer_stat
 end
 
-function _M.init(shm, interval, upstream_storage)
+function _M.init(shm, max_keep_time, upstream_storage)
     if not shm then
         log("logger configuration error")
         _M.ok = false
         return
     end
 
-    if not interval then
-        _M.interval = 5
-        log("logger configuration missing interval, default 5s")
+    if not max_keep_time then
+        _M.max_keep_time = 61
+        log("logger configuration missing max_keep_time, default 60s")
     else
-        _M.interval = tonumber(interval)
+        _M.max_keep_time = tonumber(max_keep_time)
     end
 
     if upstream_storage then
@@ -168,17 +174,22 @@ local function getPeerList(name)
     return result
 end
 
-function _M.report(name, peer)
+function _M.report(name, peer, offset)
     if not name then
         return
     end
 
+    if not offset then
+        offset = 60
+    end
+
     local dict = _M.storage
-    local tp = math.floor(ngx_time() / _M.interval) * _M.interval
-    local report = {name=name, timestamp=tp, statistics={}}
+    local t_end = ngx_time() - 1
+    local t_start = t_end - offset
+    local report = {name=name, ts_start=t_start, ts_end=t_end, statistics={}}
 
     if peer then
-        local peer_stat = get(name, peer, tp)
+        local peer_stat = get(name, peer, t_start, t_end)
         table.insert(report.statistics, peer_stat)
     else
         local peer_list = getPeerList(name)
@@ -187,7 +198,7 @@ function _M.report(name, peer)
         end
 
         for _, peer in pairs(peer_list) do
-            local peer_stat = get(name, peer, tp)
+            local peer_stat = get(name, peer, t_start, t_end)
             table.insert(report.statistics, peer_stat)
         end
     end
@@ -195,12 +206,22 @@ function _M.report(name, peer)
     return json.encode(report)
 end
 
-function _M.tps()
+function _M.tps(offset)
     local dict = _M.storage
-    local tp = math.floor(ngx_time() / _M.interval) * _M.interval
 
-    local count = dict:get("total|" .. tp) or 0
-    return count / _M.interval
+    if not offset then
+        offset = 60
+    end
+
+    local t_end = ngx_time()
+    local t_start = t_end - offset
+
+    local total = 0
+    for ts = t_start,t_end do
+        local count = dict:get("total|" .. ts) or 0
+        total = total + count
+    end
+    return total / offset
 end
 
 return _M
