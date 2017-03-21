@@ -185,7 +185,7 @@ function _M.report(name, peer, offset)
 
     local dict = _M.storage
     local t_end = ngx_time() - 1
-    local t_start = t_end - offset
+    local t_start = t_end - offset + 1
     local report = {name=name, ts_start=t_start, ts_end=t_end, statistics={}}
 
     if peer then
@@ -213,8 +213,8 @@ function _M.tps(offset)
         offset = 60
     end
 
-    local t_end = ngx_time()
-    local t_start = t_end - offset
+    local t_end = ngx_time() - 1
+    local t_start = t_end - offset + 1
 
     local total = 0
     for ts = t_start,t_end do
