@@ -52,6 +52,18 @@ local function put(name, peer, rt, code)
         return
     end
 
+    -- total counter of nginx
+    local counter_key = "total|" .. time_point
+    local new, err = dict:incr(counter_key, 1)
+    if not new and err == "not found" then
+        local ok, err = dict:safe_add(counter_key, 0, ttl)
+        if not ok then
+            log("logger: " .. err)
+            return
+        end
+        dict:incr(counter_key, 1)
+    end
+
     return
 end
 
@@ -114,7 +126,7 @@ function _M.calc()
 
     local name = ngx.var.backname
     if not name or name == "" then
-        return
+        name = "_"
     end
 
     local status   = ngx.var.upstream_status
@@ -181,6 +193,14 @@ function _M.report(name, peer)
     end
 
     return json.encode(report)
+end
+
+function _M.tps()
+    local dict = _M.storage
+    local tp = math.floor(ngx_time() / _M.interval) * _M.interval
+
+    local count = dict:get("total|" .. tp) or 0
+    return count / _M.interval
 end
 
 return _M
