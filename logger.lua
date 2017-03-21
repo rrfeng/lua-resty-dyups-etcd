@@ -103,7 +103,7 @@ function _M.init(shm, max_keep_time, upstream_storage)
     end
 
     if not max_keep_time then
-        _M.max_keep_time = 61
+        _M.max_keep_time = 60
         log("logger configuration missing max_keep_time, default 60s")
     else
         _M.max_keep_time = tonumber(max_keep_time)
@@ -185,6 +185,10 @@ function _M.report(name, peer, offset)
         offset = 60
     end
 
+    if offset > _M.max_keep_time then
+        offset = _M.max_keep_time
+    end
+
     local dict = _M.storage
     local t_end = ngx_time() - 1
     local t_start = t_end - offset + 1
@@ -213,6 +217,10 @@ function _M.tps(offset)
 
     if not offset then
         offset = 60
+    end
+
+    if offset > _M.max_keep_time then
+        offset = _M.max_keep_time
     end
 
     local t_end = ngx_time() - 1
