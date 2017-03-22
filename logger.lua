@@ -181,11 +181,10 @@ function _M.report(name, peer, offset)
         return
     end
 
+    offset = tonumber(offset)
     if not offset then
         offset = 60
-    end
-
-    if offset > _M.max_keep_time then
+    elseif offset > _M.max_keep_time then
         offset = _M.max_keep_time
     end
 
@@ -215,11 +214,10 @@ end
 function _M.tps(offset)
     local dict = _M.storage
 
+    offset = tonumber(offset)
     if not offset then
         offset = 60
-    end
-
-    if offset > _M.max_keep_time then
+    elseif offset > _M.max_keep_time then
         offset = _M.max_keep_time
     end
 
