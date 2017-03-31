@@ -12,6 +12,13 @@ A lua module for OpenResty, can dynamically update the upstreams from etcd.
 - lua-resty-http
 - cjson
 
+## SYNOPSIS
+- syncer: fetch from etcd and watch etcd changes, save upstreams in shared.dict.syncer
+- picker: sync upstreams from shared.dict.syncer(which syncer writes), run balancer alg to select upstream. REQUIRE: syncer
+- logger: record the upstream response status and time cost in shared.dict.logger, and generate reports. OPTIONAL REQUIRE: syncer
+- judger: TODO
+- health: TODO
+
 ## USAGE
 
 ### Prepare data in etcd:
