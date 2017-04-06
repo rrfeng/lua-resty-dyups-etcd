@@ -9,7 +9,6 @@ local ngx_worker_id = ngx.worker.id
 local ngx_worker_exiting = ngx.worker.exiting
 
 local logger = require "lreu.logger"
-local picker = require "lreu.picker"
 
 local function info(...)
     log(INFO, "judger: ", ...)
@@ -44,7 +43,27 @@ local function getUpstreamList()
 end
 
 local function judge(report)
-    return nil
+    local fp = {}
+
+    -- if only 1 peer in the upstream, do not fail it.
+    if #report <= 1 then
+        return fp
+    end
+
+    local total, avg
+    for peer, rate in pairs(report) do
+        if rate > 0.5 then
+            fp[#fp+1] = peer
+        end
+        total = total + rate
+    end
+    avg = total / #report
+
+    if 2*#fp > #report then
+        return fp
+    end
+
+    return fp
 end
 
 local function peerFail(name, peer)
