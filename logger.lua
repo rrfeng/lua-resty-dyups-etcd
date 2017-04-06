@@ -16,7 +16,7 @@ _M.code_list = { 200, 202, 204, 301, 302, 304, 400, 401, 403, 404, 405, 408, 409
 
 local function splitstr(str)
     local t = {}
-    for i in str:gmatch("[^ ,]") do
+    for i in str:gmatch("[^ ,]+") do
         t[#t+1] = i
     end
     return t

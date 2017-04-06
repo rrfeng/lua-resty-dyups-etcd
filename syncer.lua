@@ -158,14 +158,14 @@ local function save(name)
         end
     end
 
-    local allname = ""
-    for name, upstream in pairs(_M.data) do
+    local allname = {}
+    for name, _ in pairs(_M.data) do
         if name ~= "_version" then
-           allname = allname .. "|" .. name
+           allname[#allname+1] = name
         end
     end
 
-    dict:set("_allname", allname)
+    dict:set("_allname", table.concat(allname, "|"))
     dict:set("_version", _M.data._version)
 
     return
