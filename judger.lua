@@ -8,6 +8,7 @@ local new_timer = ngx.timer.at
 local ngx_worker_id = ngx.worker.id
 local ngx_worker_exiting = ngx.worker.exiting
 
+local json = require "cjson"
 local logger = require "lreu.logger"
 
 local function info(...)
@@ -50,14 +51,13 @@ local function judge(report)
         return fp
     end
 
+    -- a simple rule, fail_rate > 50 and not all peer fail
     local total, avg
     for peer, rate in pairs(report) do
         if rate > 0.5 then
             fp[#fp+1] = peer
         end
-        total = total + rate
     end
-    avg = total / #report
 
     if 2*#fp > #report then
         return fp
@@ -75,6 +75,7 @@ local function peerFail(name, peer)
     else
         info("set peer fail.", name, peer)
     end
+    return
 end
 
 local function genReport(name)
@@ -107,8 +108,11 @@ local function check(premature, name)
     local report = genReport(name)
     local failed_peers = judge(report)
 
-    for i = 1,#failed_peers do
-        peerFail(name, failed_peers[i])
+    if #failed_peers >= 1 then
+        info("peer fail:", json.encode(report))
+        for i = 1,#failed_peers do
+            peerFail(name, failed_peers[i])
+        end
     end
  
     local ok, err = new_timer(_M.check_interval, check, name)
