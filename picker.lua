@@ -61,8 +61,7 @@ local function slowStart(premature, name, peer, t)
 end
 
 local function update(name)
-
-    -- if the version is same, no update
+    -- if the etcd version is same, no update
     local ver = _M.storage:get(name .. "|version")
     if _M.data[name] and _M.data[name].version == ver then
         return nil
@@ -108,6 +107,10 @@ local function update(name)
     return nil
 end
 
+local function ischeckdown(name, host, port)
+    return _M.storage:get("checkdown:" .. name .. ":" .. host .. ":" .. port)
+end
+
 function _M.rr(name)
     -- before pick check update
     update(name)
@@ -140,6 +143,14 @@ function _M.rr(name)
             goto continue
         end
 
+        if peers[i].checkdown == true then
+            if ischeckdown(name, peers[i].host, peers[i].port) then
+                goto continue
+            else
+                peers[i].checkdown = false
+            end
+        end
+
         peers[i].run_weight = peers[i].run_weight + peers[i].cfg_weight
         total = total + peers[i].cfg_weight
 
@@ -161,6 +172,9 @@ function _M.rr(name)
     if pick then
         pick.run_weight = pick.run_weight - total
     end
+
+    -- for health check
+    pick.checkdown = ischeckdown(name, pick.host, pick.port)
 
     return pick
 end
