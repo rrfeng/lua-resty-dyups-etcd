@@ -81,6 +81,10 @@ end
 local function genReport(name)
     local report = {}
     local st = logger.report(name, nil, 5)
+    if not st then
+        return report
+    end
+
     for i = 1,#st.statistics do
         local peer = st.statistics[i]
         local total, errors = 0, 0

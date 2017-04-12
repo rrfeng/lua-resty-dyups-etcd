@@ -199,7 +199,7 @@ function _M.report(name, peer, offset)
     else
         local peer_list = getPeerList(name)
         if not peer_list or #peer_list == 0 then
-            return
+            return report
         end
 
         for _, peer in pairs(peer_list) do
@@ -208,7 +208,7 @@ function _M.report(name, peer, offset)
         end
     end
 
-    return json.encode(report)
+    return report
 end
 
 function _M.tps(offset)
