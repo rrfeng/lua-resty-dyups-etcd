@@ -5,7 +5,7 @@ local ngx_time = ngx.time
 _M.storage = nil
 _M.upstream = nil
 _M.interval = nil
-_M.ok = false
+_M.enable = false
 
 local function log(c)
     pcall(ngx_log, ngx_ERR, c)
@@ -98,7 +98,7 @@ end
 function _M.init(shm, max_keep_time, upstream_storage)
     if not shm then
         log("logger configuration error")
-        _M.ok = false
+        _M.enable = false
         return
     end
 
@@ -114,12 +114,12 @@ function _M.init(shm, max_keep_time, upstream_storage)
     end
 
     _M.storage = shm
-    _M.ok = true
+    _M.enable = true
     return
 end
 
 function _M.calc()
-    if not _M.ok then
+    if not _M.enable then
         return
     end
 
