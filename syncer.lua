@@ -307,7 +307,7 @@ local function watch(premature, index)
             if name then
                 if action == "delete" then
                     _M.data[name] = nil
-                elseif action == "set" or action == "update" then
+                elseif action == "set" or action == "update" or action == "compareAndSwap" then
                     if not _M.data[name] then
                         _M.data[name] = {version=tonumber(change.etcdIndex), peers={}}
                     end
@@ -325,7 +325,7 @@ local function watch(premature, index)
                         _M.data[name] = nil
                     end
                     log("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
-                elseif action == "set" or action == "update" then
+                elseif action == "set" or action == "update" or action == "compareAndSwap" then
                     if not _M.data[name] then
                         _M.data[name] = {version=tonumber(change.etcdIndex), peers={peer}}
                         log("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
