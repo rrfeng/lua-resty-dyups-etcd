@@ -139,7 +139,7 @@ function _M.rr(name)
             goto continue
         end
 
-        if peers[i].status == "down" then
+        if not peers[i].status == "up" then
             goto continue
         end
 
