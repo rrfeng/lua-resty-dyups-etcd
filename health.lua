@@ -12,15 +12,15 @@ local json = require "cjson"
 local logger = require "lreu.logger"
 
 local function info(...)
-    log(INFO, "judger: ", ...)
+    log(INFO, "healthcheck: ", ...)
 end
 
 local function warn(...)
-    log(WARN, "judger: ", ...)
+    log(WARN, "healthcheck: ", ...)
 end
 
 local function errlog(...)
-    log(ERR, "judger: ", ...)
+    log(ERR, "healthcheck: ", ...)
 end
 
 local function splitstr(str)
@@ -90,7 +90,7 @@ local function genReport(name)
     end
 
     for i = 1,#st.statistics do
-        local peer = st.statistics[i]
+        local peer = st.statistics[i].peer
         local total, errors = 0, 0
         for j = 1,#st.statistics[i].stat do
             total = total + st.statistics[i].stat[j].count
