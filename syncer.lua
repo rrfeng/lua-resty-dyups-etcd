@@ -2,8 +2,11 @@ local _M = {}
 local http = require "http"
 local json = require "cjson"
 
-local ngx_log = ngx.log
-local ngx_ERR = ngx.ERR
+local log = ngx.log
+local ERR = ngx.ERR
+local WARN = ngx.WARN
+local INFO = ngx.INFO
+
 local ngx_time = ngx.time
 local ngx_timer_at = ngx.timer.at
 local ngx_worker_id = ngx.worker.id
@@ -13,8 +16,16 @@ local ngx_sleep = ngx.sleep
 _M.ready = false
 _M.data = {}
 
-local function log(c)
-    pcall(ngx_log, ngx_ERR, c)
+local function info(...)
+    log(INFO, "healthcheck: ", ...)
+end
+
+local function warn(...)
+    log(WARN, "healthcheck: ", ...)
+end
+
+local function errlog(...)
+    log(ERR, "healthcheck: ", ...)
 end
 
 local function copyTab(st)
@@ -85,7 +96,7 @@ local function getLock()
         if err == "exists" then
             return nil
         end
-        log("GET LOCK: failed to add key \"lock\": " .. err)
+        errlog("GET LOCK: failed to add key \"lock\": " .. err)
         return nil
     end
     _M.lock = true
@@ -98,7 +109,7 @@ local function refreshLock()
         if err == "exists" then
             return nil
         end
-        log("REFRESH LOCK: failed to set \"lock\"" .. err)
+        errlog("REFRESH LOCK: failed to set \"lock\"" .. err)
         return nil
     end
     return true
@@ -205,10 +216,10 @@ local function watch(premature, index)
 
     -- If we cannot acquire the lock, wait 1 second
     if not getLock() then
-        log("Waiting 1s for pre-worker to exit...")
+        info("Waiting 1s for pre-worker to exit...")
         local ok, err = ngx_timer_at(1, watch, index)
         if not ok then
-            log("Error start watch: ", err)
+            errlog("Error start watch: ", err)
         end
         return
     end
@@ -222,19 +233,19 @@ local function watch(premature, index)
     if index == nil then
         local upstreamList, err = fetch(url .. "?recursive=true")
         if err then
-            log("When fetch from etcd: " .. err)
+            errlog("When fetch from etcd: " .. err)
             ngx_sleep(1)
             goto continue
         end
 
         if upstreamList.errorCode then
-            log("When fetch from etcd: " .. upstreamList.message)
+            errlog("When fetch from etcd: " .. upstreamList.message)
             ngx_sleep(1)
             goto continue
         end
 
         if not upstreamList.node.nodes then
-            log("Empty dir: " .. upstreamList.message)
+            warn("Empty dir: " .. upstreamList.message)
             ngx_sleep(1)
             goto continue
         end
@@ -245,18 +256,18 @@ local function watch(premature, index)
 
             local upstreamInfo, err = fetch(url .. name .. "?recursive=true")
             if err then
-                log("When fetch from etcd: " .. err)
+                errlog("When fetch from etcd: " .. err)
                 ngx_sleep(1)
                 goto continue
             end
 
             if upstreamList.errorCode then
-                log("When fetch from etcd: " .. upstreamList.message)
+                errlog("When fetch from etcd: " .. upstreamList.message)
                 ngx_sleep(1)
                 goto continue
             end
 
-            log("full fetching: " .. json.encode(upstreamInfo))
+            info("full fetching: " .. json.encode(upstreamInfo))
             if upstreamInfo.node.dir then
                 if upstreamInfo.node.nodes then
                     for i, j in pairs(upstreamInfo.node.nodes) do
@@ -288,7 +299,7 @@ local function watch(premature, index)
             ngx_sleep(1)
             goto continue
         elseif err ~= nil then
-            log("Error when watching etcd: ", err)
+            errlog("Error when watching etcd: ", err)
             ngx_sleep(1)
             goto continue
         end
@@ -299,7 +310,7 @@ local function watch(premature, index)
             goto continue
         end
 
-        log("recv a change: " .. json.encode(change))
+        info("recv a change: " .. json.encode(change))
 
         local action = change.action
         if change.node.dir then
@@ -324,26 +335,26 @@ local function watch(premature, index)
                     if 0 == #_M.data[name].peers then
                         _M.data[name] = nil
                     end
-                    log("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
+                    info("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
                 elseif action == "set" or action == "update" or action == "compareAndSwap" then
                     if not _M.data[name] then
                         _M.data[name] = {version=tonumber(change.etcdIndex), peers={peer}}
-                        log("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
+                        info("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
                     else
                         local index = indexOf(_M.data[name].peers, peer)
                         if index == nil then
-                            log("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
+                            info("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
                             peer.start_at = ngx_time()
                             table.insert(_M.data[name].peers, peer)
                         else
-                            log("MODIFY [" .. name .. "]: " .. peer.host ..":".. peer.port .. " " .. change.node.value)
+                            info("MODIFY [" .. name .. "]: " .. peer.host ..":".. peer.port .. " " .. change.node.value)
                             _M.data[name].peers[index] = peer
                         end
                         _M.data[name].version = tonumber(change.node.modifiedIndex)
                     end
                 end
             else
-                log(err)
+                errlog(err)
             end
             _M.data._version = tonumber(change.node.modifiedIndex)
             save(name)
@@ -355,7 +366,7 @@ local function watch(premature, index)
     -- Start the update cycle.
     local ok, err = ngx_timer_at(0, watch, nextIndex)
     if not ok then
-        log("Error start watch: ", err)
+        errlog("Error start watch: ", err)
     end
     return
 end
@@ -378,7 +389,7 @@ function _M.init(conf)
     if not allname or not version then
         local ok, err = ngx_timer_at(0, watch, nextIndex)
         if not ok then
-            log("Error start watch: " .. err)
+            errlog("Error start watch: " .. err)
         end
         return
 
@@ -395,7 +406,7 @@ function _M.init(conf)
             if not ok then
                 local ok, err = ngx_timer_at(0, watch, nextIndex)
                 if not ok then
-                    log("Error start watch: " .. err)
+                    errlog("Error start watch: " .. err)
                 end
                 return
             else
@@ -410,7 +421,7 @@ function _M.init(conf)
     -- Start the etcd watcher
     local ok, err = ngx_timer_at(0, watch, nextIndex)
     if not ok then
-        log("Error start watch: " .. err)
+        errlog("Error start watch: " .. err)
     end
 
 end

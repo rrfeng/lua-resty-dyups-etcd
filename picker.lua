@@ -1,17 +1,28 @@
 local _M = {}
 local json = require "cjson"
 
+local log = ngx.log
+local ERR = ngx.ERR
+local WARN = ngx.WARN
+local INFO = ngx.INFO
+
 local ngx_timer_at = ngx.timer.at
-local ngx_log = ngx.log
-local ngx_ERR = ngx.ERR
 local ngx_time = ngx.time
 
 _M.ready = false
 _M.black_hole = {ip="127.0.0.1", port=2222, weight=0}
 _M.data = {}
 
-local function log(c)
-    ngx_log(ngx_ERR, c)
+local function info(...)
+    log(INFO, "healthcheck: ", ...)
+end
+
+local function warn(...)
+    log(WARN, "healthcheck: ", ...)
+end
+
+local function errlog(...)
+    log(ERR, "healthcheck: ", ...)
 end
 
 local function indexOf(t, e)
@@ -55,7 +66,7 @@ local function slowStart(premature, name, peer, t)
 
     local ok, err = ngx_timer_at(1, slowStart, name, peer, t+1)
     if not ok then
-        log("Error start slowStart: " .. err)
+        errlog("Error start slowStart: " .. err)
         peers[i].cfg_weight = peer.weight
     end
 end
@@ -99,7 +110,7 @@ local function update(name)
             if peers[i].start_at and now - peers[i].start_at < 5 then
                 local ok, err = ngx_timer_at(0, slowStart, name, peers[i], 1)
                 if not ok then
-                    log("Error start slowStart: " .. err)
+                    errlog("Error start slowStart: " .. err)
                 end
             end
         end

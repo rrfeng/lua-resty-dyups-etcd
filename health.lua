@@ -4,6 +4,7 @@ local log = ngx.log
 local ERR = ngx.ERR
 local WARN = ngx.WARN
 local INFO = ngx.INFO
+
 local new_timer = ngx.timer.at
 local ngx_worker_id = ngx.worker.id
 local ngx_worker_exiting = ngx.worker.exiting

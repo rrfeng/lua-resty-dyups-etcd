@@ -1,4 +1,10 @@
 local _M = {}
+
+local log = ngx.log
+local ERR = ngx.ERR
+local WARN = ngx.WARN
+local INFO = ngx.INFO
+
 local json = require "cjson"
 local ngx_time = ngx.time
 
@@ -7,8 +13,16 @@ _M.upstream = nil
 _M.interval = nil
 _M.enable = false
 
-local function log(c)
-    pcall(ngx_log, ngx_ERR, c)
+local function info(...)
+    log(INFO, "healthcheck: ", ...)
+end
+
+local function warn(...)
+    log(WARN, "healthcheck: ", ...)
+end
+
+local function errlog(...)
+    log(ERR, "healthcheck: ", ...)
 end
 
 -- from log
@@ -35,7 +49,7 @@ local function put(name, peer, rt, code)
     if not newval and err == "not found" then
         local ok, err = dict:safe_add(key, 0, ttl)
         if not ok then
-            log("logger: " .. err)
+            errlog("logger: " .. err)
             return
         end
         dict:incr(key, 1)
@@ -48,7 +62,7 @@ local function put(name, peer, rt, code)
 
     local ok, err = dict:safe_set(key_rt, s, ttl)
     if not ok then
-        log("logger: " .. err)
+        errlog("logger: " .. err)
         return
     end
 
@@ -58,7 +72,7 @@ local function put(name, peer, rt, code)
     if not new and err == "not found" then
         local ok, err = dict:safe_add(counter_key, 0, ttl)
         if not ok then
-            log("logger: " .. err)
+            errlog("logger: " .. err)
             return
         end
         dict:incr(counter_key, 1)
@@ -97,14 +111,14 @@ end
 
 function _M.init(shm, max_keep_time, upstream_storage)
     if not shm then
-        log("logger configuration error")
+        errlog("logger configuration error")
         _M.enable = false
         return
     end
 
     if not max_keep_time then
         _M.max_keep_time = 60
-        log("logger configuration missing max_keep_time, default 60s")
+        infolog("logger configuration missing max_keep_time, default 60s")
     else
         _M.max_keep_time = tonumber(max_keep_time)
     end
