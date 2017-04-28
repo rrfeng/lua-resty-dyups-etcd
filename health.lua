@@ -195,7 +195,7 @@ local function checkPeer(client, name, fat_peer)
     client:connect(fat_peer.host, fat_peer.port)
 
     local peer = fat_peer.host .. ":" .. fat_peer.port
-    local res, err = client:request({path = url, method = "GET", headers = { ["User-Agent"] = "nginx healthcheck" } })
+    local res, err = client:request({path = peer.check_url, method = "GET", headers = { ["User-Agent"] = "nginx healthcheck" } })
     if not res then
         errlog("request fail: ", err)
         peerFail(name, peer, "healthcheck")
