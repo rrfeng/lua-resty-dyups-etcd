@@ -9,8 +9,15 @@ local new_timer = ngx.timer.at
 local ngx_worker_id = ngx.worker.id
 local ngx_worker_exiting = ngx.worker.exiting
 
+local http = require "http"
 local json = require "cjson"
 local logger = require "lreu.logger"
+
+_M.ok_status   = {}
+_M.logcheck    = {}
+_M.healthcheck = {}
+
+local _default_ok_status = {200, 201, 204, 301, 302, 401, 403}
 
 local function info(...)
     log(INFO, "healthcheck: ", ...)
@@ -68,16 +75,44 @@ local function getPeerList()
     return peers
 end
 
-local function peerFail(name, peer)
+local function peerFail(name, peer, from)
     local dict = _M.storage
     local key = "checkdown:" .. name .. ":" .. peer
-    local ok, err = dict:set(key, true, _M.recover_after)
-    if not ok then
-        errlog("set peer fail error!", name, peer, err)
-    else
-        info("set peer fail.", name, peer)
+    info("set peer fail.", name, peer)
+
+    if from == "healthcheck" then
+        local count_key = "count_" .. key
+        local newval, err = dict:incr(count_key, 1, 0)
+        if err then
+            errlog("incr errors fail: ", err)
+        else
+            if newval < _M.healthcheck.max_fails then
+                return
+            end
+
+            local ok, err = dict:set(key, true)
+            if err then
+                errlog("cannot set peer fail: ", err)
+            end
+        end
+    elseif from == "logcheck" then
+        local ok, err = dict:set(key, true, _M.logcheck.recover, 1)
+        if not ok then
+            errlog("set peer fail error!", name, peer, err)
+        end
     end
-    return
+end
+
+local function peerOk(name, peer)
+    local dict = _M.storage
+    local key = "checkdown:" .. name .. ":" .. peer
+    local value, flags = dict:get(key)
+    if not value or flags == 1 then
+        return dict:delete("count_" .. key)
+    elseif value and flags == 0 then
+        info("peer become ok:", name, peer)
+        return dict:delete("count"_key)
+    end
 end
 
 -----------------
@@ -132,7 +167,7 @@ local function checkLog(report)
     return fp
 end
 
-local function logcheck(premature, name)
+local function logchecker(premature, name)
     if premature or ngx_worker_exiting() then
         return
     end
@@ -143,31 +178,70 @@ local function logcheck(premature, name)
     if #failed_peers >= 1 then
         info("peer fail:", json.encode(report))
         for i = 1,#failed_peers do
-            peerFail(name, failed_peers[i])
+            peerFail(name, failed_peers[i], "logcheck")
         end
     end
  
-    local ok, err = new_timer(_M.check_interval, logcheck, name)
+    local ok, err = new_timer(_M.logcheck.interval, logchecker, name)
     if not ok then
-        errlog("start time error: ", name, err)
+        errlog("start timer error: ", name, err)
     end
 end
 
 --------------------
 --- Health Check ---
 --------------------
-local function checkHttp(url)
+local function checkPeer(client, name, fat_peer)
+    client:connect(fat_peer.host, fat_peer.port)
+
+    local peer = fat_peer.host .. ":" .. fat_peer.port
+    local res, err = client:request({path = url, method = "GET", headers = { ["User-Agent"] = "nginx healthcheck" } })
+    if not res then
+        errlog("request fail: ", err)
+        peerFail(name, peer, "healthcheck")
+    elseif _M.ok_status[res.status] then
+        peerOk(name, peer)
+    end
 end
 
-local function healthcheck(premature, name)
+local function healthchecker(premature, name)
     if premature or ngx_worker_exiting() then
         return
     end
 
-    local peers = getUpstreamPeers(name)
-    for i = 1,#peers do
+    local fat_peers = getUpstreamPeers(name)
+    local http_client = http:new()
+    http_client:set_timeout(500)
+    http_client:set_keepalive(10000, 5)
+
+    for i = 1,#fat_peers do
+        local ok, err = new_timer(0, checkPeer, http_client, name, fat_peers[i])
+        if not ok then
+            errlog("start timer error: ", name, err)
+        end
+    end
+
+    local ok, err = new_timer(_M.healthcheck.interval, healthchecker, name)
+    if not ok then
+        errlog("start timer error: ", name, err)
     end
 end
+
+-- cfg = {
+--   storage = ngx.shared.dict.SYNCER_STORAGE,
+--   healthcheck = {
+--      enable    = true,
+--      interval  = 5,
+--      max_fails = 3,
+--      ok_status = {200, 204, 301, 302}
+--   },
+--   logcheck = {
+--      enable   = false,
+--      interval = 5,
+--      recover  = 60
+--   }
+-- }
+--
 
 function _M.init(cfg)
     if ngx_worker_id() ~= 0 then
@@ -184,45 +258,68 @@ function _M.init(cfg)
         _M.storage = cfg.storage
     end
 
-    if cfg.check_interval and cfg.check_interval >= 1 then
-        _M.check_interval = cfg.check_interval
-    else
-        _M.check_interval = 5
-    end
+    if cfg.healthcheck and cfg.healthcheck.enable then
+        if not cfg.healthcheck.interval or cfg.healthcheck.interval < 1 then
+            _M.healthcheck.interval = 1
+        else
+            _M.healthcheck.interval = cfg.healthcheck.interval
+        end
 
-    -- default recover time is 60 seconds
-    -- min recover time is 2*check_interval
-    _M.recover_after = cfg.recover_after or 60
-    if cfg.recover_after <= 2*_M.check_interval then
-        _M.recover_after = 2*_M.check_interval
-    end
+        if not cfg.healthcheck.max_fails or cfg.healthcheck.max_fails < 1 then
+            _M.healthcheck.max_fails = 1
+        else
+            _M.healthcheck.max_fails = cfg.healthcheck.max_fails
+        end
 
-    local us = getUpstreamList()
+        if type(cfg.healthcheck.ok_status) ~= "table" then
+            for _, status_code in pairs(_default_ok_status) do
+                _M.ok_status[status_code] = true
+            end
+        else
+            for _, status_code in pairs(cfg.healthcheck.ok_status) do
+                _M.ok_status[status_code] = true
+            end
+        end
 
-    -- always run healthcheck
---    for _, name in pairs(us) do
---        local ok, err = new_timer(_M.check_interval, healthcheck, name)
---        if ok then
---            info("started: ", name, 
---                 ",with interval: ", _M.check_interval, 
---                 ",recover_after: ", _M.recover_after
---                )
---        else
---            errlog("start time error: ", name, err)
---        end
---    end
-
-    -- only run logcheck when logger enabled.
-    if logger.enable then
+        -- start healthchecker
+        local us = getUpstreamList()
         for _, name in pairs(us) do
-            local ok, err = new_timer(_M.check_interval, logcheck, name)
+            local ok, err = new_timer(_M.healthcheck.interval, healthchecker, name)
             if ok then
-                info("started: ", name, 
-                     ",with interval: ", _M.check_interval, 
-                     ",recover_after: ", _M.recover_after
+                info("started healthchecker: ", name, 
+                     ", interval: ", _M.healthcheck.interval, 
+                     ", max_fails: ", _M.healthcheck.max_fails
                     )
             else
-                errlog("start time error: ", name, err)
+                errlog("start healthchecker error: ", name, err)
+            end
+        end
+    end
+
+    if cfg.logcheck and cfg.logcheck.enable and logger.enable then
+        if not cfg.logcheck.interval or cfg.logcheck.interval < 5 then
+            _M.logcheck.interval = 5
+        else
+            _M.logcheck.interval = cfg.logcheck.interval
+        end
+
+        if not cfg.logcheck.recover or cfg.logcheck.recover < 2*_M.logcheck.interval then
+            _M.logcheck.recover = 2*_M.logcheck.interval
+        else
+            _M.logcheck.recover = cfg.logcheck.recover
+        end
+
+        -- start logchecker
+        local us = getUpstreamList()
+        for _, name in pairs(us) do
+            local ok, err = new_timer(_M.logcheck.interval, logchecker, name)
+            if ok then
+                info("started logchecker: ", name, 
+                     ", interval: ", _M.logcheck.interval, 
+                     ", recover: ", _M.logcheck.recover
+                    )
+            else
+                errlog("start logchecker error: ", name, err)
             end
         end
     end
