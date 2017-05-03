@@ -223,11 +223,14 @@ end
 --------------------
 --- Health Check ---
 --------------------
-local function checkPeer(premature, client, name, fat_peer)
+local function checkPeer(premature, name, fat_peer)
     if premature or ngx_worker_exiting() then
         return
     end
 
+    local client = http:new()
+    client:set_timeout(500)
+    client:set_keepalive(10000, 5)
     client:connect(fat_peer.host, fat_peer.port)
 
     local peer = fat_peer.host .. ":" .. fat_peer.port
@@ -246,12 +249,9 @@ local function healthchecker(premature, name)
     end
 
     local fat_peers = getUpstreamPeers(name)
-    local http_client = http:new()
-    http_client:set_timeout(500)
-    http_client:set_keepalive(10000, 5)
 
     for i = 1,#fat_peers do
-        local ok, err = new_timer(0, checkPeer, http_client, name, fat_peers[i])
+        local ok, err = new_timer(0, checkPeer, name, fat_peers[i])
         if not ok then
             errlog("start timer error: ", name, err)
         end
