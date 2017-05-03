@@ -14,15 +14,15 @@ _M.interval = nil
 _M.enable = false
 
 local function info(...)
-    log(INFO, "healthcheck: ", ...)
+    log(INFO, "logger: ", ...)
 end
 
 local function warn(...)
-    log(WARN, "healthcheck: ", ...)
+    log(WARN, "logger: ", ...)
 end
 
 local function errlog(...)
-    log(ERR, "healthcheck: ", ...)
+    log(ERR, "logger: ", ...)
 end
 
 -- from log

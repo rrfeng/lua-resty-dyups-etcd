@@ -41,8 +41,12 @@ end
 
 local function getUpstreamList()
     local dict = _M.storage
-    local allname = dict:get("_allname")
+    local ready = dict:get("ready")
+    if not ready then
+        return nil
+    end
 
+    local allname = dict:get("_allname")
     if not allname then
         warn("get nil upstream list")
         return nil
@@ -78,11 +82,11 @@ end
 local function peerFail(name, peer, from)
     local dict = _M.storage
     local key = "checkdown:" .. name .. ":" .. peer
-    info("set peer fail.", name, peer)
 
     if from == "healthcheck" then
         local count_key = "count_" .. key
         local newval, err = dict:incr(count_key, 1, 0)
+        warn("peer check fail: ", newval, " ", name, " ", peer)
         if err then
             errlog("incr errors fail: ", err)
         else
@@ -91,12 +95,14 @@ local function peerFail(name, peer, from)
             end
 
             local ok, err = dict:set(key, true)
+            errlog("set peer down: ", newval, " ", name, " ", peer)
             if err then
                 errlog("cannot set peer fail: ", err)
             end
         end
     elseif from == "logcheck" then
         local ok, err = dict:set(key, true, _M.logcheck.recover, 1)
+        errlog("set peer down by logcheck: ", name, " ", peer)
         if not ok then
             errlog("set peer fail error!", name, peer, err)
         end
@@ -106,12 +112,12 @@ end
 local function peerOk(name, peer)
     local dict = _M.storage
     local key = "checkdown:" .. name .. ":" .. peer
+    info("peer ok: ", name, " ", peer)
+    dict:delete("count_" .. key)
+
     local value, flags = dict:get(key)
-    if not value or flags == 1 then
-        return dict:delete("count_" .. key)
-    elseif value and flags == 0 then
-        info("peer become ok:", name, peer)
-        return dict:delete("count"_key)
+    if value and not flags then
+        return dict:delete(key)
     end
 end
 
@@ -176,7 +182,7 @@ local function logchecker(premature, name)
     local failed_peers = checkLog(report)
 
     if #failed_peers >= 1 then
-        info("peer fail:", json.encode(report))
+        warn("peer fail:", json.encode(report))
         for i = 1,#failed_peers do
             peerFail(name, failed_peers[i], "logcheck")
         end
@@ -188,16 +194,43 @@ local function logchecker(premature, name)
     end
 end
 
+local function spawn_logchecker(premature)
+    if premature or ngx_worker_exiting() then
+        return
+    end
+
+    local us = getUpstreamList()
+    if not us then
+        new_timer(1, spawn_logchecker)
+    end
+
+    for _, name in pairs(us) do
+        local ok, err = new_timer(_M.logcheck.interval, logchecker, name)
+        if ok then
+            info("started logchecker: ", name, 
+                 ", interval: ", _M.logcheck.interval, 
+                 ", recover: ", _M.logcheck.recover
+                )
+        else
+            errlog("start logchecker error: ", name, err)
+        end
+    end
+end
+
 --------------------
 --- Health Check ---
 --------------------
-local function checkPeer(client, name, fat_peer)
+local function checkPeer(premature, client, name, fat_peer)
+    if premature or ngx_worker_exiting() then
+        return
+    end
+
     client:connect(fat_peer.host, fat_peer.port)
 
     local peer = fat_peer.host .. ":" .. fat_peer.port
     local res, err = client:request({path = peer.check_url, method = "GET", headers = { ["User-Agent"] = "nginx healthcheck" } })
     if not res then
-        errlog("request fail: ", err)
+        errlog("request fail: ", err, peer)
         peerFail(name, peer, "healthcheck")
     elseif _M.ok_status[res.status] then
         peerOk(name, peer)
@@ -224,6 +257,30 @@ local function healthchecker(premature, name)
     local ok, err = new_timer(_M.healthcheck.interval, healthchecker, name)
     if not ok then
         errlog("start timer error: ", name, err)
+    end
+end
+
+local function spawn_healthchecker(premature)
+    if premature or ngx_worker_exiting() then
+        return
+    end
+
+    local us = getUpstreamList()
+    if not us then
+        new_timer(1, spawn_healthchecker)
+        return
+    end
+
+    for _, name in pairs(us) do
+        local ok, err = new_timer(_M.healthcheck.interval, healthchecker, name)
+        if ok then
+            info("started healthchecker: ", name, 
+                 ", interval: ", _M.healthcheck.interval, 
+                 ", max_fails: ", _M.healthcheck.max_fails
+                )
+        else
+            errlog("start healthchecker error: ", name, err)
+        end
     end
 end
 
@@ -282,18 +339,7 @@ function _M.init(cfg)
         end
 
         -- start healthchecker
-        local us = getUpstreamList()
-        for _, name in pairs(us) do
-            local ok, err = new_timer(_M.healthcheck.interval, healthchecker, name)
-            if ok then
-                info("started healthchecker: ", name, 
-                     ", interval: ", _M.healthcheck.interval, 
-                     ", max_fails: ", _M.healthcheck.max_fails
-                    )
-            else
-                errlog("start healthchecker error: ", name, err)
-            end
-        end
+        new_timer(0, spawn_healthchecker)
     end
 
     if cfg.logcheck and cfg.logcheck.enable and logger.enable then
@@ -310,19 +356,8 @@ function _M.init(cfg)
         end
 
         -- start logchecker
-        local us = getUpstreamList()
-        for _, name in pairs(us) do
-            local ok, err = new_timer(_M.logcheck.interval, logchecker, name)
-            if ok then
-                info("started logchecker: ", name, 
-                     ", interval: ", _M.logcheck.interval, 
-                     ", recover: ", _M.logcheck.recover
-                    )
-            else
-                errlog("start logchecker error: ", name, err)
+        new_timer(0, spawn_logchecker)
             end
-        end
-    end
 end
 
 return _M

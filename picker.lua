@@ -14,15 +14,15 @@ _M.black_hole = {ip="127.0.0.1", port=2222, weight=0}
 _M.data = {}
 
 local function info(...)
-    log(INFO, "healthcheck: ", ...)
+    log(INFO, "picker: ", ...)
 end
 
 local function warn(...)
-    log(WARN, "healthcheck: ", ...)
+    log(WARN, "picker: ", ...)
 end
 
 local function errlog(...)
-    log(ERR, "healthcheck: ", ...)
+    log(ERR, "picker: ", ...)
 end
 
 local function indexOf(t, e)

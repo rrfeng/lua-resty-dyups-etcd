@@ -17,15 +17,15 @@ _M.ready = false
 _M.data = {}
 
 local function info(...)
-    log(INFO, "healthcheck: ", ...)
+    log(INFO, "syncer: ", ...)
 end
 
 local function warn(...)
-    log(WARN, "healthcheck: ", ...)
+    log(WARN, "syncer: ", ...)
 end
 
 local function errlog(...)
-    log(ERR, "healthcheck: ", ...)
+    log(ERR, "syncer: ", ...)
 end
 
 local function copyTab(st)
