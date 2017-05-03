@@ -165,8 +165,10 @@ function _M.rr(name)
         peers[i].run_weight = peers[i].run_weight + peers[i].cfg_weight
         total = total + peers[i].cfg_weight
 
-        if pick == nil or pick.run_weight < peers[i].run_weight then
-            pick = peers[i]
+        if not peers[i].checkdown then
+            if pick == nil or pick.run_weight < peers[i].run_weight then
+                pick = peers[i]
+            end
         end
 
         ::continue::
@@ -177,17 +179,11 @@ function _M.rr(name)
         for i=1,#peers do
             peers[i].cfg_weight = peers[i].weight or 1
         end
-        pick = peers[1]
     end
 
     if pick then
         pick.run_weight = pick.run_weight - total
-    end
-
-    -- for health check
-    pick.checkdown = ischeckdown(name, pick.host, pick.port)
-    if pick.checkdown then
-        return nil
+        pick.checkdown = ischeckdown(name, pick.host, pick.port)
     end
 
     return pick
