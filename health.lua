@@ -112,11 +112,13 @@ end
 local function peerOk(name, peer)
     local dict = _M.storage
     local key = "checkdown:" .. name .. ":" .. peer
+    local fails = dict:get("count_" .. key)
     info("peer ok: ", name, " ", peer)
     dict:delete("count_" .. key)
 
     local value, flags = dict:get(key)
     if value and not flags then
+        errlog("peer recover: ", fails, " ", name, " ", peer)
         return dict:delete(key)
     end
 end
