@@ -118,7 +118,7 @@ function _M.init(shm, max_keep_time, upstream_storage)
 
     if not max_keep_time then
         _M.max_keep_time = 60
-        infolog("logger configuration missing max_keep_time, default 60s")
+        warn("logger configuration missing max_keep_time, default 60s")
     else
         _M.max_keep_time = tonumber(max_keep_time)
     end
