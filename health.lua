@@ -204,6 +204,7 @@ local function spawn_logchecker(premature)
     local us = getUpstreamList()
     if not us then
         new_timer(1, spawn_logchecker)
+        return
     end
 
     for _, name in pairs(us) do
