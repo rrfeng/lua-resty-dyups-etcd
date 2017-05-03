@@ -150,11 +150,11 @@ function _M.rr(name)
             goto continue
         end
 
-        if not peers[i].status == "up" then
+        if peers[i].status ~= "up" then
             goto continue
         end
 
-        if peers[i].checkdown == true then
+        if peers[i].checkdown then
             if ischeckdown(name, peers[i].host, peers[i].port) then
                 goto continue
             else
@@ -186,6 +186,9 @@ function _M.rr(name)
 
     -- for health check
     pick.checkdown = ischeckdown(name, pick.host, pick.port)
+    if pick.checkdown then
+        return nil
+    end
 
     return pick
 end
