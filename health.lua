@@ -217,7 +217,6 @@ local function checkPeer(premature, name, fat_peer)
 
     local client = http:new()
     client:set_timeout(500)
-    client:set_keepalive(10000, 5)
     client:connect(fat_peer.host, fat_peer.port)
 
     local peer = fat_peer.host .. ":" .. fat_peer.port
@@ -228,6 +227,7 @@ local function checkPeer(premature, name, fat_peer)
     elseif _M.ok_status[res.status] then
         peerOk(name, peer)
     end
+    client:close()
 end
 
 local function healthchecker(premature, name)
