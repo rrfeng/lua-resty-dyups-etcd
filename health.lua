@@ -60,23 +60,10 @@ local function getUpstreamPeers(name)
     local data = dict:get(name .. "|peers")
     local ok, value = pcall(json.decode, data)
     if not ok or type(value) ~= "table" then
-        errlog("get upstream peers error: malformed data")
+        errlog("parse upstream peers error: ", name, " ", data)
         return {}
     end
     return value
-end
-
-local function getPeerList()
-    local peers = {}
-    local us = getUpstreamList()
-    for i = 1,#us do
-        local ps = getUpstreamPeers(us[i])
-        for j = 1,#ps do
-            ps[i].name = us[i]
-            peers[#peers+1] = ps[i]
-        end
-    end
-    return peers
 end
 
 local function peerFail(name, peer, from)
