@@ -141,7 +141,7 @@ local function newPeer(key, value)
              port   = tonumber(p),
              weight = w,
              status = s,
-             check  = c,
+             check_url  = c,
              slow_start = t
          }, name, nil
 end
