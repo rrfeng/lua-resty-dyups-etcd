@@ -176,11 +176,6 @@ local function logchecker(premature, name)
             peerFail(name, failed_peers[i], "logcheck")
         end
     end
- 
-    local ok, err = new_timer(_M.logcheck.interval, logchecker, name)
-    if not ok then
-        errlog("start timer error: ", name, err)
-    end
 end
 
 local function spawn_logchecker(premature)
@@ -195,7 +190,7 @@ local function spawn_logchecker(premature)
     end
 
     for _, name in pairs(us) do
-        local ok, err = new_timer(_M.logcheck.interval, logchecker, name)
+        local ok, err = new_timer(0, logchecker, name)
         if ok then
             info("started logchecker: ", name, 
                  ", interval: ", _M.logcheck.interval, 
@@ -204,6 +199,11 @@ local function spawn_logchecker(premature)
         else
             errlog("start logchecker error: ", name, err)
         end
+    end
+ 
+    local ok, err = new_timer(_M.logcheck.interval, spawn_logchecker)
+    if not ok then
+        errlog("start timer error: ", name, err)
     end
 end
 
@@ -243,11 +243,6 @@ local function healthchecker(premature, name)
             errlog("start timer error: ", name, err)
         end
     end
-
-    local ok, err = new_timer(_M.healthcheck.interval, healthchecker, name)
-    if not ok then
-        errlog("start timer error: ", name, err)
-    end
 end
 
 local function spawn_healthchecker(premature)
@@ -262,7 +257,7 @@ local function spawn_healthchecker(premature)
     end
 
     for _, name in pairs(us) do
-        local ok, err = new_timer(_M.healthcheck.interval, healthchecker, name)
+        local ok, err = new_timer(0, healthchecker, name)
         if ok then
             info("started healthchecker: ", name, 
                  ", interval: ", _M.healthcheck.interval, 
@@ -271,6 +266,11 @@ local function spawn_healthchecker(premature)
         else
             errlog("start healthchecker error: ", name, err)
         end
+    end
+
+    local ok, err = new_timer(_M.healthcheck.interval, spawn_healthchecker)
+    if not ok then
+        errlog("error spawn_healthchecker: ", err)
     end
 end
 
