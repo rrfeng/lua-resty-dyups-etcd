@@ -220,9 +220,9 @@ local function checkPeer(premature, name, fat_peer)
     client:connect(fat_peer.host, fat_peer.port)
 
     local peer = fat_peer.host .. ":" .. fat_peer.port
-    local res, err = client:request({path = peer.check_url, method = "GET", headers = { ["User-Agent"] = "nginx healthcheck" } })
+    local res, err = client:request({path = fat_peer.check_url, method = "GET", headers = { ["User-Agent"] = "nginx healthcheck" } })
     if not res then
-        errlog("check fail: ", err, " ", name, " ", peer)
+        errlog("check fail: ", err, " ", name, " ", peer, " ", fat_peer.check_url)
         peerFail(name, peer, "healthcheck")
     elseif _M.ok_status[res.status] then
         peerOk(name, peer)
