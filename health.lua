@@ -215,11 +215,16 @@ local function checkPeer(premature, name, fat_peer)
         return
     end
 
-    local client = http:new()
-    client:set_timeout(500)
-    client:connect(fat_peer.host, fat_peer.port)
-
     local peer = fat_peer.host .. ":" .. fat_peer.port
+    local client = http:new()
+    client:set_timeout(_M.healthcheck.timeout * 1000)
+    local ok, err = client:connect(fat_peer.host, fat_peer.port)
+    if not ok then
+        errlog("connect: ", err, " ", name, " ", peer)
+        peerFail(name, peer, "healthcheck")
+        return
+    end
+
     local res, err = client:request({path = fat_peer.check_url, method = "GET", headers = { ["User-Agent"] = "nginx healthcheck" } })
     if not res then
         errlog("check fail: ", err, " ", name, " ", peer, " ", fat_peer.check_url)
@@ -278,6 +283,7 @@ end
 --   storage = ngx.shared.dict.SYNCER_STORAGE,
 --   healthcheck = {
 --      enable    = true,
+--      timeout   = 0.5,
 --      interval  = 5,
 --      max_fails = 3,
 --      ok_status = {200, 204, 301, 302}
@@ -306,6 +312,12 @@ function _M.init(cfg)
     end
 
     if cfg.healthcheck and cfg.healthcheck.enable then
+        if not cfg.healthcheck.timeout or cfg.healthcheck.timeout < 0.01 then
+            _M.healthcheck.timeout = 1
+        else
+            _M.healthcheck.timeout = cfg.healthcheck.timeout
+        end
+
         if not cfg.healthcheck.interval or cfg.healthcheck.interval < 1 then
             _M.healthcheck.interval = 1
         else
