@@ -134,9 +134,13 @@ local function newPeer(key, value)
     if type(cfg) == "table" then
         w = cfg.weight     or 1
         s = cfg.status     or "up"
-        c = cfg.check_url  or "/"
         t = cfg.slow_start or 0
     end
+
+    if cfg.check_url ~= "" then
+        c = cfg.check_url
+    end
+
     return { host   = h,
              port   = tonumber(p),
              weight = w,
