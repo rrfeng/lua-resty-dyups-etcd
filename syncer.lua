@@ -135,10 +135,10 @@ local function newPeer(key, value)
         w = cfg.weight     or 1
         s = cfg.status     or "up"
         t = cfg.slow_start or 0
-    end
 
-    if cfg.check_url ~= "" then
-        c = cfg.check_url
+        if cfg.check_url ~= "" then
+            c = cfg.check_url
+        end
     end
 
     return { host   = h,
