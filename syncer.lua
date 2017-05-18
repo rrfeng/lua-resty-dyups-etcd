@@ -339,19 +339,19 @@ local function watch(premature, index)
                     if 0 == #_M.data[name].peers then
                         _M.data[name] = nil
                     end
-                    info("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
+                    errlog("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
                 elseif action == "set" or action == "update" or action == "compareAndSwap" then
                     if not _M.data[name] then
                         _M.data[name] = {version=tonumber(change.etcdIndex), peers={peer}}
-                        info("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
+                        errlog("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
                     else
                         local index = indexOf(_M.data[name].peers, peer)
                         if index == nil then
-                            info("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
+                            errlog("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
                             peer.start_at = ngx_time()
                             table.insert(_M.data[name].peers, peer)
                         else
-                            info("MODIFY [" .. name .. "]: " .. peer.host ..":".. peer.port .. " " .. change.node.value)
+                            errlog("MODIFY [" .. name .. "]: " .. peer.host ..":".. peer.port .. " " .. change.node.value)
                             _M.data[name].peers[index] = peer
                         end
                         _M.data[name].version = tonumber(change.node.modifiedIndex)
