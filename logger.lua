@@ -49,7 +49,7 @@ local function put(name, peer, rt, code)
     if not newval and err == "not found" then
         local ok, err = dict:safe_add(key, 0, ttl)
         if not ok then
-            errlog("add count key: " .. err)
+            info("add count key: " .. err)
             return
         end
         dict:incr(key, 1)
@@ -72,7 +72,7 @@ local function put(name, peer, rt, code)
     if not new and err == "not found" then
         local ok, err = dict:safe_add(counter_key, 0, ttl)
         if not ok then
-            errlog("add total count key: " .. err)
+            info("add total count key: " .. err)
             return
         end
         dict:incr(counter_key, 1)
