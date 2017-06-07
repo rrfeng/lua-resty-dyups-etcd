@@ -136,8 +136,10 @@ function _M.rr(name, ban_peer)
     local pick = nil
 
     for i=1,#peers do
-        if ban_peer and peers[i].host == ban_peer.host and peers[i].port == ban_peer.port then
-            goto continue
+        if ban_peer and #peers > 1 then
+            if peers[i].host == ban_peer.host and peers[i].port == ban_peer.port then
+                goto continue
+            end
         end
 
         -- If no weight set, the default is 1.
