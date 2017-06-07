@@ -122,7 +122,7 @@ local function ischeckdown(name, host, port)
     return _M.storage:get("checkdown:" .. name .. ":" .. host .. ":" .. port)
 end
 
-function _M.rr(name)
+function _M.rr(name, ban_peer)
     -- before pick check update
     update(name)
 
@@ -136,6 +136,9 @@ function _M.rr(name)
     local pick = nil
 
     for i=1,#peers do
+        if ban_peer and peers[i].host == ban_peer.host and peers[i].port == ban_peer.port then
+            goto continue
+        end
 
         -- If no weight set, the default is 1.
         if peers[i].cfg_weight == nil then
