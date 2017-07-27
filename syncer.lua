@@ -153,6 +153,9 @@ end
 local function save(name)
     local dict = _M.conf.storage
 
+    -- when save the data, picker should not update
+    dict:set("picker_lock", true, 0.1)
+
     -- no name means save all
     if not name then
         for name, upstream in pairs(_M.data) do
@@ -182,6 +185,9 @@ local function save(name)
 
     dict:set("_allname", table.concat(allname, "|"))
     dict:set("_version", _M.data._version)
+
+    -- remove the lock, picker can update now
+    dict:delete("picker_lock")
 
     return
 end

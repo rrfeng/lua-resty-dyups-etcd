@@ -72,7 +72,12 @@ local function slowStart(premature, name, peer, t)
 end
 
 local function update(name)
-    -- if the etcd version is same, no update
+    -- if syncer is saving data, do not update
+    if _M.storage:get("picker_lock") then
+        return nil
+    end
+
+    -- if the etcd version is same, do not update
     local ver = _M.storage:get(name .. "|version")
     if _M.data[name] and _M.data[name].version == ver then
         return nil
@@ -88,7 +93,7 @@ local function update(name)
     local ok, value = pcall(json.decode, data)
 
     if not ok or type(value) ~= "table" then
-        return "data format error"
+        errlog("update peers data format error")
     end
 
     if not _M.data[name] then
