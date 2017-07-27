@@ -74,13 +74,13 @@ end
 local function update(name)
     -- if syncer is saving data, do not update
     if _M.storage:get("picker_lock") then
-        return nil
+        return
     end
 
     -- if the etcd version is same, do not update
     local ver = _M.storage:get(name .. "|version")
     if _M.data[name] and _M.data[name].version == ver then
-        return nil
+        return
     end
 
     local ver  = _M.storage:get(name .. "|version")
@@ -88,12 +88,14 @@ local function update(name)
 
     if not ver and not data then
         _M.data[name] = nil
+        return
     end
 
     local ok, value = pcall(json.decode, data)
 
     if not ok or type(value) ~= "table" then
         errlog("update peers data format error")
+        return
     end
 
     if not _M.data[name] then
@@ -120,7 +122,7 @@ local function update(name)
             end
         end
     end
-    return nil
+    return
 end
 
 local function ischeckdown(name, host, port)
