@@ -154,25 +154,25 @@ local function save(name)
     local dict = _M.conf.storage
 
     -- when save the data, picker should not update
-    dict:set("picker_lock", true, 0.1)
+    dict:set("picker_lock", true, 1)
 
     -- no name means save all
     if not name then
         for name, upstream in pairs(_M.data) do
             if name ~= "_version" then
-                dict:set(name .. "|version", upstream.version)
                 dict:set(name .. "|peers", json.encode(upstream.peers))
+                dict:set(name .. "|version", upstream.version)
             end
         end
     else
         -- remove the deleted upstream
         if not _M.data[name] then
-            dict:delete(name .. "|version")
             dict:delete(name .. "|peers")
+            dict:delete(name .. "|version")
         -- save the updated upstream
         else
-            dict:set(name .. "|version", _M.data[name].version)
             dict:set(name .. "|peers", json.encode(_M.data[name].peers))
+            dict:set(name .. "|version", _M.data[name].version)
         end
     end
 
@@ -330,7 +330,7 @@ local function watch(premature, index)
                     _M.data[name] = nil
                 elseif action == "set" or action == "update" or action == "compareAndSwap" then
                     if not _M.data[name] then
-                        _M.data[name] = {version=tonumber(change.etcdIndex), peers={}}
+                        _M.data[name] = {version=tonumber(change.node.modifiedIndex), peers={}}
                     end
                 end
             end
@@ -341,14 +341,14 @@ local function watch(premature, index)
             if not err then
                 if action == "delete" or action == "expire" then
                     table.remove(_M.data[name].peers, indexOf(_M.data[name].peers, peer))
-                    _M.data[name].version = change.etcdIndex
+                    _M.data[name].version = change.node.modifiedIndex
                     if 0 == #_M.data[name].peers then
                         _M.data[name] = nil
                     end
                     errlog("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
                 elseif action == "set" or action == "update" or action == "compareAndSwap" then
                     if not _M.data[name] then
-                        _M.data[name] = {version=tonumber(change.etcdIndex), peers={peer}}
+                        _M.data[name] = {version=tonumber(change.node.modifiedIndex), peers={peer}}
                         errlog("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
                     else
                         local index = indexOf(_M.data[name].peers, peer)
