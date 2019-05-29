@@ -347,6 +347,7 @@ local function watch(premature, index)
                     end
                     errlog("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
                 elseif action == "set" or action == "update" or action == "compareAndSwap" then
+                    peer.start_at = ngx_time()
                     if not _M.data[name] then
                         _M.data[name] = {version=tonumber(change.node.modifiedIndex), peers={peer}}
                         errlog("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
@@ -354,7 +355,6 @@ local function watch(premature, index)
                         local index = indexOf(_M.data[name].peers, peer)
                         if index == nil then
                             errlog("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
-                            peer.start_at = ngx_time()
                             table.insert(_M.data[name].peers, peer)
                         else
                             errlog("MODIFY [" .. name .. "]: " .. peer.host ..":".. peer.port .. " " .. change.node.value)

@@ -113,7 +113,7 @@ local function update(name)
 
     local now = ngx_time()
     for i=1,#peers do
-        if peers[i].slow_start > 0 then
+        if peers[i].slow_start > 0 and peers[i].weight > 0 then
             if peers[i].start_at and now - peers[i].start_at < 5 then
                 local ok, err = ngx_timer_at(0, slowStart, name, peers[i], 1)
                 if not ok then
