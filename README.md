@@ -32,19 +32,30 @@ The default weight is 1, if not set in ETCD, or json parse error and so on.
 ### Init the module:
 ```
 lua_socket_log_errors off; # recommend
-lua_shared_dict lreu-upstream 1m; # for storeage of upstreams
+lua_shared_dict lreu_upstream 1m; # for storeage of upstreams
+lua_shared_dict lreu_upstream_k8s 1m; # for storeage of upstreams
 init_worker_by_lua_block {
     local syncer = require "lreu.syncer"
     syncer.init({
         etcd_host = "127.0.0.1",
         etcd_port = 2379,
         etcd_path = "/v1/testing/services/",
-        storage = ngx.shared.lreu-upstream
+        storage = ngx.shared.lreu_upstream
+    })
+
+
+    local syncer = require "lreu.syncer_k8s"
+    syncer_k8s.init({
+        apiserver_host = host,
+        apiserver_port = port,
+        namespace = env,
+        token = auth,
+        storage = ngx.shared.lreu_upstream_k8s
     })
 
     -- init the picker with the shared storage(read only)
     local picker = require "lreu.picker"
-    picker.init(ngx.shared.lreu-upstream)
+    picker.init(ngx.shared.lreu_upstream)
 }
 ```
 ### Get a server in upstream:
