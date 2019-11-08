@@ -7,7 +7,8 @@ A lua module for OpenResty, can dynamically update the upstreams from etcd and k
 - Healthcheck
 - Request statistics
 
-## DEPENDENCE
+## REQUIREMENTS
+
 - openresty-1.9.11.1 and newer
 - balancer_by_lua
 - ngx.worker.id
@@ -125,5 +126,6 @@ If the `second_shm` provided, both used. but the `merge` controls the behavior:
 
 ## Todo
 
+- More docs to be added.
 - Etcd cluster support.
 - Add more load-balance-alg.
