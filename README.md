@@ -120,8 +120,10 @@ upstream test {
 If the `second_shm` provided, both used. but the `merge` controls the behavior:
 - `merge`==`true`: all peers in both shm merged together for load balancing.
 - `merge`==`false`: picker try to find peers in the `first_shm`, if found, use it; if no peers in `first_shm`, picker try the `second_shm`.
+
 `hcshm` is the storeage of `health.lua` checker, if not set, will use the `first_shm`.
 
 ## Todo
---- Etcd cluster support.
---- Add more load-balance-alg.
+
+- Etcd cluster support.
+- Add more load-balance-alg.
