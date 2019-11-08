@@ -130,9 +130,9 @@ local function newPeer(key, value)
 
     local ok, cfg = pcall(json.decode, value)
 
-    local w, s, c, t = 1, "up", "/", 0
+    local w, s, c, t = 100, "up", "/", 0
     if type(cfg) == "table" then
-        w = cfg.weight     or 1
+        w = cfg.weight     or 100
         s = cfg.status     or "up"
         t = cfg.slow_start or 0
 

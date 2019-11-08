@@ -1,54 +1,106 @@
 # lua-resty-upstream-etcd
-```
-!!!This module is under heavy development, do not use in  production environment.!!!
 
-A lua module for OpenResty, can dynamically update the upstreams from etcd.
-```
+A lua module for OpenResty, can dynamically update the upstreams from etcd and kubernetes.
+
+- Upstream realtime change from etcd or kubernetes apiserver, without reload.
+- Weighted round robin load balancing (not for kubernetes because of no `weight` settings of pod).
+- Healthcheck
+- Request statistics
 
 ## DEPENDENCE
-- openresty-1.9.7.3 + (balancer_by_lua*)
+- openresty-1.9.11.1 and newer
+- balancer_by_lua
+- ngx.worker.id
 - lua-resty-http
 - cjson
 
 ## USAGE
 
-### Prepare data in etcd:
+### Prepare Etcd:
 ```
-etcdctl set /v1/testing/services/my_test_service/10.1.1.1:8080 '{"weight": 3}'
-etcdctl set /v1/testing/services/my_test_service/10.1.1.2:8080 '{"weight": 4}'
-etcdctl set /v1/testing/services/my_test_service/10.1.1.3:8080 '{"weight": 5}'
+etcdctl set /v1/testing/services/${service_name}/${host}:${port} ${value}
+```
 
-Value should be a json, now round_robin_with_weight() support the weight for load balancing, works like nginx round-robin.
-The default weight is 1, if not set in ETCD, or json parse error and so on.
+The `service_name` is upstream's name, should be string.
+The `host` is upstream's ip address, domain name not supported.
+The `port` is upstream's port.
+The `value` should be a json, if json parse error, will use the default value below:
 ```
+{
+    "weight": 100,
+    "check_url": "/health",
+    "slow_start": 30,
+    "status": "up"
+}
+```
+
+- weight: upstream peer weight as number, int or float.
+- check_url: for healthcheck, if enabled, checker will do http request to `http://${host}:${port}${check_url}`.
+- slow_start: number of seconds duration that the upstream peer's weight slowly increased from `0` to `${weight}`
+- status: indicates the peer is up or down, must be `up` if you want the peer work, any other value means peer down.
 
 ### Init the module:
 ```
-lua_socket_log_errors off; # recommend
-lua_shared_dict dyups 10k; # for global lock and version
+lua_socket_log_errors off;   # recommend
+lua_package_path "/path/of/your/environment...";
+
+lua_shared_dict lreu_shm 1m;     # for global storage
+lua_shared_dict lreu_shm_k8s 1m; # for global storage
+
 init_worker_by_lua_block {
-    local u = require "dyups"
-    u.init({
+    local syncer = require "lreu.syncer"
+    syncer.init({
         etcd_host = "127.0.0.1",
         etcd_port = 2379,
         etcd_path = "/v1/testing/services/",
-        -- The real path of the dump file will be: /tmp/nginx-upstreams_v1_testing_services_
-        dump_file = "/tmp/nginx-upstreams",
-        -- Slow-start in N seconds from 0 to configured weight for the newly added peer
-        slow_start = 10,
-        dict = ngx.shared.dyups
+        storage = ngx.shared.lreu_shm
+    })
+
+    -- if you want to use k8s
+    local syncer_k8s = require "lreu.syncer_k8s"
+    sycner_k8s.init({
+        apiserver_host = "127.0.0.1",
+        apiserver_port = "6443",
+        namespace = "default",
+        token = "the token",
+        storage = ngx.shared.lreu_shm_k8s
+    })
+
+    -- init the picker before using it in balancer_by_lua
+    local picker = require "lreu.picker"
+
+    -- you can use both etcd and k8s
+    picker.init(ngx.shared.lreu_shm, ngx.shared.lreu_shm_k8s, true, ngx.shared.hc)
+
+    -- if you want to use health check
+    local health = require "lreu.health"
+    health.init({
+        storage = ngx.shared.lreu_upstream,
+        healthcheck = {
+            enable = true,
+            timeout = 3,
+            interval = 5,
+            max_fails = 3,
+            ok_status = {200, 204, 301, 302, 401, 403, 404}
+        },
+        logcheck = {
+            enable = true,
+            interval = 5,
+            recover = 60
+        }
     })
 }
 ```
-### Get a server in upstream:
+
+### Use picker in upstream:
 ```
 upstream test {
     server 127.0.0.1:2222; # fake server
 
     balancer_by_lua_block {
         local balancer = require "ngx.balancer"
-        local u = require "dyups"
-        local s, err = u.round_robin_server("my_test_service")
+        local picker = require "lreu.picker"
+        local s, err = u.rr("my_test_service")
         if not s then
             ngx.log(ngx.ERR, err)
             return ngx.exit(500)
@@ -62,42 +114,14 @@ upstream test {
 }
 ```
 
-## Functions
-### dyups.round_robin_server(service_name)
-```
-Get a backend server from the server list in a upstream, and using round-robin algorithm.
-return a table: 
-{
-  host = "127.0.0.1",
-  port = 1234
-}
-```
-### dyups.all_servers(service_name)
-```
-Get all backend servers in a upstream.
-return a table:
-{
-  {host= "127.0.0.1", port = 1234},
-  {host= "127.0.0.2", port = 1234},
-  {host= "127.0.0.3", port = 1234}
-}
-
-So you can realize your own balance algorithms.
-```
-
-## dyups.round_robin_with_weight(service_name)
-```
-Like round_robin_server, you should use this function instead of round_robin_serverZ().
-This support peers weight.
-```
+### Functions
+#### picker.init(first_shm, second_shm?, merge?, hcshm?)
+`first_shm` and `second_shm` should be the storage of syncer. One or two.
+If the `second_shm` provided, both used. but the `merge` controls the behavior:
+- `merge`==`true`: all peers in both shm merged together for load balancing.
+- `merge`==`false`: picker try to find peers in the `first_shm`, if found, use it; if no peers in `first_shm`, picker try the `second_shm`.
+`hcshm` is the storeage of `health.lua` checker, if not set, will use the `first_shm`.
 
 ## Todo
 --- Etcd cluster support.
 --- Add more load-balance-alg.
---- ~~Upstream peers weight support.~~
---- Upstream health check support.
-
-## License
-```
-I have not thought about it yet.
-```
