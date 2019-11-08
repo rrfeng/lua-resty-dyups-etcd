@@ -131,13 +131,13 @@ local function updateService(data)
     local name = data.object.metadata.name
     local nver = tonumber(data.object.metadata.resourceVersion)
     if _M.data[name] and _M.data[name].version == nver then
-        info("same version, skip update.")
+        info("same version, skip update ", name)
         return
     end
 
     local peers = newPeers(data.object.subsets[1])
     if _M.data[name] and peersEqual(peers, _M.data[name].peers) then
-        info("same peers, skip update.")
+        info("same peers, skip update ", name)
         return
     end
 
@@ -146,11 +146,11 @@ local function updateService(data)
         peers = peers
     }
 
-    _M.conf.storage:set("picker_lock", true, 1)
+    -- update peers before version, in case of picker read version first,
+    -- may cause picker get new ver and old peer list
     _M.conf.storage:set(name .. "|peers", json.encode(peers))
     _M.conf.storage:set(name .. "|version", nver)
     saveList()
-    _M.conf.storage:delete("picker_lock")
 
     errlog("update service: " .. name)
     return
@@ -160,11 +160,9 @@ local function deleteService(data)
     local name = data.object.metadata.name
     _M.data[name] = nil
 
-    _M.conf.storage:set("picker_lock", true, 1)
-    _M.conf.storage:delete(name .. "|peers")
     _M.conf.storage:delete(name .. "|version")
+    _M.conf.storage:delete(name .. "|peers")
     saveList()
-    _M.conf.storage:delete("picker_lock")
 
     errlog("delete service: " .. name)
     return

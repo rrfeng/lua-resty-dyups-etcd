@@ -9,7 +9,6 @@ local INFO = ngx.INFO
 local ngx_timer_at = ngx.timer.at
 local ngx_time = ngx.time
 
-_M.ready = false
 _M.black_hole = {ip="127.0.0.1", port=2222, weight=0}
 _M.data = {}
 
@@ -34,8 +33,17 @@ local function indexOf(t, e)
     return nil
 end
 
-function _M.init(shm)
-    _M.storage = shm
+-- init(shm1, shm2, merge, hcshm)
+-- if merge==true, all peers used in shm1 and shm2
+-- if merge==false, peers in shm1 is prefered, if no peers found, use shm2
+-- hcshm used to work with healthcheck, if not set, use shm1
+function _M.init(...)
+    _M.storage = {}
+    _M.storage[1] = select(1, ...)
+    _M.storage[2] = select(2, ...)
+    _M.merge = select(3, ...) == true or false
+    _M.hcshm = select(4, ...) or _M.storage[1]
+    return
 end
 
 local function slowStart(premature, name, peer, t)
@@ -71,39 +79,67 @@ local function slowStart(premature, name, peer, t)
     end
 end
 
+local function getVersion(name)
+    if _M.merge then
+        return tostring(_M.storage[1]:get(name .. "|version")) ..
+            tostring(_M.storage[2]:get(name .. "|version")), 1
+    else
+        local index = 1
+        local ver = _M.storage[1]:get(name .. "|version")
+        if not ver and _M.storage[2] then
+            ver = _M.storage[2]:get(name .. "|version")
+            index = 2
+        end
+        return ver, index
+    end
+end
+
+local function decode(pstr)
+    local ok, peers = pcall(json.decode, pstr)
+    if not ok or type(peers) ~= "table" then
+        errlog("get peers from shm format error:", pstr)
+        peers = {}
+    end
+    return peers
+end
+
+local function getPeers(name, index)
+    local pstr = _M.storage[index]:get(name .. "|peers")
+    local peers = decode(pstr)
+    if _M.merge then
+        pstr = _M.storage[3-index]:get(name .. "|peers")
+        if #peers == 0 then
+            peers = decode(pstr)
+        else
+            for i, p in ipairs(decode(pstr)) do
+                table.insert(peers, p)
+            end
+        end
+    end
+    return peers
+end
+
 local function update(name)
-    -- if syncer is saving data, do not update
-    if _M.storage:get("picker_lock") then
+    -- if the upstream version is same, do not update
+    local ver, index = getVersion(name)
+    if not ver then
+        _M.data[name] = nil
+        warn("cannot get version from shm, delete upstream: ", name)
         return
     end
 
-    -- if the etcd version is same, do not update
-    local ver = _M.storage:get(name .. "|version")
     if _M.data[name] and _M.data[name].version == ver then
         return
     end
 
-    local ver  = _M.storage:get(name .. "|version")
-    local data = _M.storage:get(name .. "|peers")
-
-    if not ver and not data then
+    local peers = getPeers(name, index)
+    if not peers then
         _M.data[name] = nil
+        warn("cannot get peers from shm, delete upstream:", name)
         return
     end
 
-    local ok, value = pcall(json.decode, data)
-
-    if not ok or type(value) ~= "table" then
-        errlog("update peers data format error")
-        return
-    end
-
-    if not _M.data[name] then
-        _M.data[name] = {}
-    end
-
-    _M.data[name].peers = value
-    _M.data[name].version = ver
+    _M.data[name] = { peers = peers, version = ver }
 
     -- Check if there is a new peer that needs slow start.
     local peers = _M.data[name].peers
@@ -113,7 +149,7 @@ local function update(name)
 
     local now = ngx_time()
     for i=1,#peers do
-        if peers[i].slow_start > 0 and peers[i].weight > 0 then
+        if peers[i].slow_start > 0 then
             if peers[i].start_at and now - peers[i].start_at < 5 then
                 local ok, err = ngx_timer_at(0, slowStart, name, peers[i], 1)
                 if not ok then
@@ -122,17 +158,16 @@ local function update(name)
             end
         end
     end
-    return
+    return nil
 end
 
 local function ischeckdown(name, host, port)
-    return _M.storage:get("checkdown:" .. name .. ":" .. host .. ":" .. port)
+    return _M.hcshm:get("checkdown:" .. name .. ":" .. host .. ":" .. port)
 end
 
 function _M.rr(name, ban_peer)
     -- before pick check update
     update(name)
-
     if not _M.data[name] then
         return nil
     end

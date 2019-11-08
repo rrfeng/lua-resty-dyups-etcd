@@ -153,9 +153,6 @@ end
 local function save(name)
     local dict = _M.conf.storage
 
-    -- when save the data, picker should not update
-    dict:set("picker_lock", true, 1)
-
     -- no name means save all
     if not name then
         for name, upstream in pairs(_M.data) do
@@ -185,9 +182,6 @@ local function save(name)
 
     dict:set("_allname", table.concat(allname, "|"))
     dict:set("_version", _M.data._version)
-
-    -- remove the lock, picker can update now
-    dict:delete("picker_lock")
 
     return
 end
@@ -340,14 +334,15 @@ local function watch(premature, index)
             local peer, name, err = newPeer(change.node.key, change.node.value)
             if not err then
                 if action == "delete" or action == "expire" then
-                    table.remove(_M.data[name].peers, indexOf(_M.data[name].peers, peer))
-                    _M.data[name].version = change.node.modifiedIndex
-                    if 0 == #_M.data[name].peers then
-                        _M.data[name] = nil
-                    end
                     errlog("DELETE [".. name .. "]: " .. peer.host .. ":" .. peer.port)
-                elseif action == "set" or action == "update" or action == "compareAndSwap" then
-                    peer.start_at = ngx_time()
+                    if _M.data[name] then
+                        table.remove(_M.data[name].peers, indexOf(_M.data[name].peers, peer))
+                        _M.data[name].version = change.node.modifiedIndex
+                        if 0 == #_M.data[name].peers then
+                            _M.data[name] = nil
+                        end
+                    end
+                elseif action == "create" or action == "set" or action == "update" or action == "compareAndSwap" then
                     if not _M.data[name] then
                         _M.data[name] = {version=tonumber(change.node.modifiedIndex), peers={peer}}
                         errlog("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
@@ -355,9 +350,11 @@ local function watch(premature, index)
                         local index = indexOf(_M.data[name].peers, peer)
                         if index == nil then
                             errlog("ADD [" .. name .. "]: " .. peer.host ..":".. peer.port)
+                            peer.start_at = ngx_time()
                             table.insert(_M.data[name].peers, peer)
                         else
                             errlog("MODIFY [" .. name .. "]: " .. peer.host ..":".. peer.port .. " " .. change.node.value)
+                            peer.start_at = ngx_time()
                             _M.data[name].peers[index] = peer
                         end
                         _M.data[name].version = tonumber(change.node.modifiedIndex)
