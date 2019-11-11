@@ -54,34 +54,42 @@ local function basename(s)
     return y, x
 end
 
+local function validatePort(port)
+    local p = tonumber(port)
+    if not p then
+        return false 
+    elseif p < 1 or p > 65535 then
+        return false
+    end
+    return true
+end
+
+local function validateIP(ip)
+    local chunks = {ip:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")}
+    if (#chunks ~= 4) then
+        return false
+    else
+        for _,v in pairs(chunks) do
+            local n = tonumber(v)
+            if not n or n < 0 or n > 255 then
+                return false
+            end
+        end
+    end
+    return true
+end
+
 local function splitAddr(s)
     if not s then
         return "127.0.0.1", 0, "nil args"
     end
     host, port = s:match("(.*):([0-9]+)")
 
-    -- verify the port
-    local p = tonumber(port)
-    if p == nil then
-        return "127.0.0.1", 0, "port invalid"
-    elseif p < 1 or p > 65535 then
-        return "127.0.0.1", 0, "port invalid"
-    end
-
-    -- verify the ip addr
-    local chunks = {host:match("(%d+)%.(%d+)%.(%d+)%.(%d+)")}
-    if (#chunks == 4) then
-        for _,v in pairs(chunks) do
-            if (tonumber(v) < 0 or tonumber(v) > 255) then
-                return "127.0.0.1", 0, "host invalid"
-            end
-        end
+    if validateIP(port) and validateIP(host) then
+        return host, port, nil
     else
         return "127.0.0.1", 0, "host invalid"
     end
-
-    -- verify pass
-    return host, port, nil
 end
 
 local function getLock()
@@ -189,7 +197,11 @@ end
 local function fetch(url)
     local client = http:new()
     client:set_timeout(10000)
-    client:connect(_M.conf.etcd_host, _M.conf.etcd_port)
+    local ok, err = client:connect(_M.conf.etcd_host, _M.conf.etcd_port)
+    if not ok then
+        errlog("cannot connect to etcd: ", err)
+        return nil, err
+    end
 
     local res, err = client:request({path=url, method="GET"})
     if err then
@@ -383,6 +395,14 @@ function _M.init(conf)
     if ngx_worker_id() ~= 0 then
         return
     end
+    if not validateIP(conf.etcd_host) then
+        errlog("cannot init syncer, etcd_host not valid.")
+        return
+    elseif not validatePort(conf.etcd_port) then
+        errlog("cannot init syncer, etcd_port not valid.")
+        return
+    end
+
     _M.conf = conf
 
     local nextIndex
