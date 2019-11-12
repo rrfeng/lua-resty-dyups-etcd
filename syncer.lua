@@ -85,10 +85,10 @@ local function splitAddr(s)
     end
     host, port = s:match("(.*):([0-9]+)")
 
-    if validateIP(port) and validateIP(host) then
+    if validatePort(port) and validateIP(host) then
         return host, port, nil
     else
-        return "127.0.0.1", 0, "host invalid"
+        return "127.0.0.1", 0, "invalid args"
     end
 end
 
@@ -290,8 +290,9 @@ local function watch(premature, index)
                         local peer, _, err = newPeer(j.key, j.value)
                         if not err then
                             _M.data[name].peers[#_M.data[name].peers+1] = peer
+                        else
+                            errlog("cannot parse new peer: ", err)
                         end
-
                     end
                 end
                 -- Keep the version is the newest response x-etcd-index
