@@ -96,6 +96,10 @@ local function releaseLock()
 end
 
 local function newPeers(pods)
+    if not pods or not pods.addresses then
+        return nil
+    end
+
     local peers = {}
     local port = DEFAULT_HTTP_PORT
     for _, p in pairs(pods.ports) do
