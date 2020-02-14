@@ -241,7 +241,6 @@ function _M.show(name)
         return "{}"
     end
 
-    update(name)
     return json.encode(_M.data[name])
 end
 
