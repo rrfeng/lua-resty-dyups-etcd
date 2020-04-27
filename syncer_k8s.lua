@@ -95,20 +95,20 @@ local function releaseLock()
     return true
 end
 
-local function newPeers(pods)
-    if not pods or not pods.addresses then
+local function newPeers(sets)
+    if not sets or #sets == 0 or not sets[1].addresses then
         return nil
     end
 
     local peers = {}
     local port = DEFAULT_HTTP_PORT
-    for _, p in pairs(pods.ports) do
+    for _, p in pairs(sets[1].ports) do
         if p.name == "http" then
             port = p.port
             break
         end
     end
-    for _, addr in ipairs(pods.addresses) do
+    for _, addr in ipairs(sets[1].addresses) do
         table.insert(peers, {
             host   = addr.ip,
             port   = port,
@@ -139,7 +139,7 @@ local function updateService(data)
         return
     end
 
-    local peers = newPeers(data.object.subsets[1])
+    local peers = newPeers(data.object.subsets)
     if _M.data[name] and peersEqual(peers, _M.data[name].peers) then
         info("same peers, skip update ", name)
         return
